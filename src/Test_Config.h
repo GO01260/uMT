@@ -19,6 +19,6 @@
 #define TEST_COMPLEX_1			0
 
 #define TEST_PROGMEM			0
-#define TEST_MALLOC				1
+#define TEST_MALLOC				0
 
 /////////// EOF

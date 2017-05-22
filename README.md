@@ -8,7 +8,9 @@ In the uMT library one can find a Getting Started document describing how to use
 
 This is an initial version of uMT and, as such, no extensive testing has been performed. As a consequence, users are warned about the potential instability of the uMT software.
 
-he current version runs, full functionalities, on the Arduino UNO and MEGA2560 and, with reduced functionalities, on Arduino DUE.
+The current version runs, full functionalities, on the Arduino UNO and MEGA2560 and, with reduced functionalities, on Arduino DUE.
+
+Please note that this an EDUCATIONAL tool, not designed for industrial or state-of-the-art application (nor life or mission critial application!!!) and not fully optimized.
 
 Bugs, questions and suggestions can be sent to the author at "go01260@alice.it"
 

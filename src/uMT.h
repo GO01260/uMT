@@ -51,7 +51,7 @@
 //			At any time, at most 1 AGENT can be active.
 // 11)	TIMERS are numbered the same as TASK ID for TIMER_TASKS, "index+uMT_MAX_TASK_NUM" for AGENT times.
 //		AGENT timers can be more than TASKS to increase flexibility in delivering future Events.
-//
+// 12)	When called from ISR, uMT routine must NOT preemptive the calling task but "NeedResched" is set for TimeTick further processing
 //
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -63,14 +63,30 @@
 #include "uMTdataTypes.h"
 
 
-
 ///////////////////////////////////////////////////////////////////////////////////
 //
-//	uMT SEMAPHORE
+//	uMT CONFIGURATION
+//
+//	Returned with Kn_GetConfiguration()
 //
 ////////////////////////////////////////////////////////////////////////////////////
+class uMTcfg
+{
+public:
+	Bool_t		Use_Events;
+	Bool_t		Use_Semaphores;
+	Bool_t		Use_Timers;
+	Bool_t		Use_RestartTask;
+	Bool_t		Use_PrintInternals;
 
-#define uMT_MAX_SEM_VALUE		65535	// 16 bits value
+	uint16_t	Max_Tasks;
+	uint16_t	Max_Semaphores;
+	uint16_t	Max_Events;
+	uint16_t	Max_AgentTimers;
+	uint16_t	Max_AppTasks_Stack;		// Any user created STACK
+	uint16_t	Max_Task1_Stack;		// Arduino loop() STACK
+	uint16_t	Max_Idle_Stack;			// Idle STACK
+};
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -132,14 +148,13 @@ enum Errno_t
 //
 ////////////////////////////////////////////////////////////////////////////////////
 
-
+extern "C" { unsigned int sysTickHook();};
 
 #include "uMT_ExtendedTime.h"
 #include "uMTtimer.h"
 #include "uMTtask.h"
 #include "uMTqueue.h"
 #include "uMTsemaphores.h"
-
 
 
 class uMT
@@ -151,6 +166,7 @@ class uMT
 	friend void KLL_MainLoop();			// Test0_KernelLowLevel.cpp
 	friend unsigned uMTdoTicksWork();	// uMTarduinoSysTick.cpp
 	friend void uMT_SystemTicks();		// uMTarduinoSysTick.cpp
+	friend unsigned int sysTickHook();	// uMTarduinoSysTick.cpp
 
 	friend class uMTtaskQueue;
 
@@ -169,7 +185,7 @@ volatile Bool_t	BlinkingLED;		// Set for Led to blink
 	void		Tk_RemoveFromAnyQueue(uTask *pTask);	// Remove TASK from any QUEUE
 	void		ReadyTask(uTask *pTask);		// Make a task ready and insert in the Ready list
 	void		ReadyTaskLocked(uTask *pTask);	// Make a task ready and insert in the Ready list
-	void		Check4Preemption();				// Check is an higher priority task must preempt me...
+	void		Check4Preemption(Bool_t AllowPreemption);	// Check is an higher priority task must preempt me...
 
 
 
@@ -184,9 +200,20 @@ volatile Bool_t	BlinkingLED;		// Set for Led to blink
 volatile uint8_t	NoResched;			// If set, prevent rescheduling
 volatile Bool_t		NeedResched;		// Set if a Reschedule is needed
 
-//inline	Bool_t		InsideCriticalRegion() { return (NoResched > 0); };
-//inline void		EnterCritRegion() { NoResched++; };
-//inline void		ExitCritRegion() { NoResched--; };
+inline	Bool_t		InsideCriticalRegion() { return (NoResched > 0); };
+
+inline void		EnterCritRegion() { 
+	CpuStatusReg_t CpuFlags = isrKn_IntLock();
+	NoResched++; 
+	isrKn_IntUnlock(CpuFlags);
+};
+
+inline void		ExitCritRegion() {
+	CpuStatusReg_t CpuFlags = isrKn_IntLock();
+	NoResched--; 
+	isrKn_IntUnlock(CpuFlags);
+};
+
 #endif
 
 
@@ -198,28 +225,13 @@ volatile Bool_t		NeedResched;		// Set if a Reschedule is needed
 	//////////////////////////////////////////////////////////////////////////////////////////
 	void		SetupSysTicks();
 //	void		SwitchStack();
-	CpuStatusReg_t	IntLock();
-	void		IntUnlock(CpuStatusReg_t Flags);
-	StackPtr_t	NewTask(StackPtr_t TaskStack, StackSize_t StackSize, void (*TaskStartAddr)(), void (*BadExit)());
+	StackPtr_t	NewTask(StackPtr_t TaskStackBase, StackSize_t StackSize, void (*TaskStartAddr)(), void (*BadExit)());
 	void		ResumeTask(StackPtr_t StackPtr);
 	void		Suspend();
 	void		Suspend2();
 
-#ifdef WIN32
+#ifndef WIN32		// Arduino
 
-	StackPtr_t	GetSP();
-
-#else	// Arduino
-
-#if defined(ARDUINO_ARCH_AVR)
-#define	GetSP() (StackPtr_t)SP
-#endif
-
-#if defined(ARDUINO_ARCH_SAM)
-	StackPtr_t	GetSP();
-#endif
-
-	
 void	CheckTaskMagic(uTask *task, const __FlashStringHelper*String);
 void	CheckInterrupts(const __FlashStringHelper *String);
 
@@ -250,7 +262,7 @@ volatile Bool_t	NoPreempt;			// If set, current task cannot be pre-empted
 	uTask		*UnusedQueue;		// Pointer to the UNUSED task list (no TotQueue counter)
 
 	uTask		*Running;			// Pointer to the running task
-	uTask		*LastRunning;			// Pointer to the running task
+	uTask		*LastRunning;		// Pointer to the running task
 	uTask		*IdleTaskPtr;		// pointer to the IDLE task (shortcut)
 
 	uTask		TaskList[uMT_MAX_TASK_NUM];		// Task list
@@ -267,9 +279,11 @@ static void		IdleLoop();			// Idle routine
 	//////////////////////////////////////////////////////////////////////////////////////////
 	// INTERNAL: Semaphore
 	//////////////////////////////////////////////////////////////////////////////////////////
-	uMTsem	SemList[uMT_MAX_SEM_NUM];
+	uMTsem		SemList[uMT_MAX_SEM_NUM];
 	
 inline Bool_t	SemId_Check(SemId_t Sid) { return((Sid >= uMT_MAX_SEM_NUM) ? FALSE : TRUE); };
+Errno_t			doSm_Release(SemId_t Sid, Bool_t AllowPreemption);
+
 #endif
 
 
@@ -304,12 +318,16 @@ inline 	Bool_t	TimerId_Check(TimerId_t TmId) { return((TmId >= uMT_MAX_TASK_NUM+
 	// INTERNAL: Events
 	//////////////////////////////////////////////////////////////////////////////////////////
 	void		EventSend(uTask *pTask, Event_t Event);
+	Errno_t		doEv_Send(TaskId_t Tid, Event_t Event, Bool_t AllowPreemption);
 	Bool_t		EventVerified(uTask *pTask);
 	const __FlashStringHelper *EventFlag2String(uMToptions_t EventFlag);
 #endif
 
 
-
+	//////////////////////////////////////////////////////////////////////////////////////////
+	// INTERNAL: RAM
+	//////////////////////////////////////////////////////////////////////////////////////////
+	StackPtr_t	FreeRAM_0;			// Free memory after STACK allocation (=> memory availale for application)
 
 
 
@@ -317,7 +335,7 @@ inline 	Bool_t	TimerId_Check(TimerId_t TmId) { return((TmId >= uMT_MAX_TASK_NUM+
 	//////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////
 	//
-	// PUBLIC ENTRY POINTS (iXx_nnn() can be called from ISR)
+	// PUBLIC ENTRY POINTS (isrXx_nnn() can be called from ISR)
 	//
 	//////////////////////////////////////////////////////////////////////////////////////////
 	//////////////////////////////////////////////////////////////////////////////////////////
@@ -327,50 +345,76 @@ public:
 	////////////////////////////////////////////////////////
 	// Generic KERNEL
 	////////////////////////////////////////////////////////
-	Errno_t	Kn_Start(Bool_t _TimeSharingEnabled = TRUE, Bool_t _BlinkingLED = TRUE);
- 	void	iKn_FatalError();
- 	void	iKn_FatalError(const __FlashStringHelper *String);
-	void	iKn_Reboot(); 
-inline uint16_t Kn_GetVersion() { return (uMT_VERSION_NUMBER);};
-static SRAMsize_t Kn_GetFreeSRAM();
-static uint16_t Kn_GetSPbase();
+		Errno_t	Kn_Start(Bool_t _TimeSharingEnabled = TRUE, Bool_t _BlinkingLED = TRUE);
+		void	isrKn_FatalError();
+		void	isrKn_FatalError(const __FlashStringHelper *String);
+		void	isrKn_Reboot(); 
 
-	Errno_t	Kn_PrintInternals();		// Print internals structure to Serial
+inline	uint16_t isrKn_GetVersion() { return (uMT_VERSION_NUMBER);};
+
+static	StackPtr_t Kn_GetSPbase();			// If STATIC STACK ALLOCATION, it returns the HeapPointer (end of unitialized + initialized data)
+static	StackPtr_t Kn_GetRAMend();			// Return RAMEND (top address in RAM)
+static	StackPtr_t Kn_GetFreeRAM();			// Return => (StackPointer - HeapPointer)
+static	StackPtr_t Kn_GetFreeRAMend();		// Return => (RAM_END - HeapPointer)
+
+#ifdef WIN32
+
+StackPtr_t	Kn_GetSP();
+
+#else	// Arduino
+
+#if defined(ARDUINO_ARCH_AVR)
+#define	Kn_GetSP() (StackPtr_t)SP
+#endif
+
+#if defined(ARDUINO_ARCH_SAM)
+static	StackPtr_t	Kn_GetSP();
+#endif
+#endif
+
+		Errno_t	Kn_PrintInternals();					// Print internals structure to Serial
+
+		Errno_t	Kn_GetConfiguration(uMTcfg &pCfg);		// Returns internal configuration
+		Errno_t	Kn_PrintConfiguration(uMTcfg &pCfg);	// Print configuration to Serial
+
+static 	CpuStatusReg_t	isrKn_IntLock();
+static 	void			isrKn_IntUnlock(CpuStatusReg_t Flags);
 
 	// Generic KERNEL, can be called from ISR
-inline Timer_t	iKn_GetKernelTick() { return (TickCounter.Low); };
+inline Timer_t	isrKn_GetKernelTick() { return (TickCounter.Low); };
 
 	////////////////////////////////////////////////////////
 	// TASK management
 	////////////////////////////////////////////////////////
-	Errno_t Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddress_t _BadExit = NULL);
-	Errno_t Tk_DeleteTask(TaskId_t Tid);
-	Errno_t Tk_DeleteTask() { if (Inited == FALSE) return(E_NOT_INITED); return(Tk_DeleteTask(Running->myTid)); };
-	Errno_t	Tk_StartTask(TaskId_t Tid);
-	Errno_t	Tk_GetMyTid(TaskId_t &Tid);
-	Errno_t	Tk_Yield();
+		Errno_t Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddress_t _BadExit = NULL);
+		Errno_t Tk_DeleteTask(TaskId_t Tid);
+		Errno_t Tk_DeleteTask() { if (Inited == FALSE) return(E_NOT_INITED); return(Tk_DeleteTask(Running->myTid)); };
+		Errno_t	Tk_StartTask(TaskId_t Tid);
+		Errno_t	Tk_GetMyTid(TaskId_t &Tid);
+		Errno_t	Tk_Yield();
+
 #if uMT_USE_RESTARTTASK==1
-	Errno_t	Tk_ReStartTask(TaskId_t Tid);
+		Errno_t	Tk_ReStartTask(TaskId_t Tid);
 #endif
 
-	inline uint8_t Tk_GetActiveTaskNo() { return(ActiveTaskNo); };
+inline	uint8_t Tk_GetActiveTaskNo() { return(ActiveTaskNo); };
 
 	// TASK management: can be called from ISR?
-inline Bool_t	Tk_SetTimeSharing(Bool_t NewValue) { Bool_t oldValue = TimeSharingEnabled; TimeSharingEnabled = NewValue; return(oldValue); };
-inline Bool_t	Tk_GetTimeSharing(Bool_t NewValue) { return(TimeSharingEnabled); };
+inline	Bool_t	Tk_SetTimeSharing(Bool_t NewValue) { Bool_t oldValue = TimeSharingEnabled; TimeSharingEnabled = NewValue; return(oldValue); };
+inline	Bool_t	Tk_GetTimeSharing(Bool_t NewValue) { return(TimeSharingEnabled); };
 
-inline Bool_t	Tk_SetPreemption(Bool_t NewValue) { Bool_t oldValue = NoPreempt; NoPreempt = NewValue; return(oldValue);};
-inline Bool_t	Tk_GetPreemption() { return(NoPreempt);};
+inline	Bool_t	Tk_SetPreemption(Bool_t NewValue) { Bool_t oldValue = NoPreempt; NoPreempt = NewValue; return(oldValue);};
+inline	Bool_t	Tk_GetPreemption() { return(NoPreempt);};
 
-inline Bool_t	Tk_SetBlinkingLED(Bool_t NewValue) { Bool_t oldValue = BlinkingLED; BlinkingLED = NewValue; return(oldValue);};
-inline Bool_t	Tk_GetBlinkingLED() { return(BlinkingLED);};
+inline	Bool_t	Tk_SetBlinkingLED(Bool_t NewValue) { Bool_t oldValue = BlinkingLED; BlinkingLED = NewValue; return(oldValue);};
+inline	Bool_t	Tk_GetBlinkingLED() { return(BlinkingLED);};
 
-	Errno_t		Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppriority);
-	Errno_t		Tk_GetPriority(TaskId_t Tid, TaskPrio_t &ppriority);
-	Errno_t		Tk_GetPriority(TaskPrio_t &ppriority);
+		Errno_t	Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppriority);
+		Errno_t	Tk_GetPriority(TaskId_t Tid, TaskPrio_t &ppriority);
+		Errno_t	Tk_GetPriority(TaskPrio_t &ppriority);
 
-	Errno_t		Tk_SetParam(TaskId_t Tid, Param_t _parameter);
-inline Errno_t	Tk_GetParam(Param_t &_parameter) { if (Inited == FALSE) return(E_NOT_INITED); _parameter = Running->Parameter; return(E_SUCCESS);};
+		Errno_t	Tk_SetParam(TaskId_t Tid, Param_t _parameter);
+inline	Errno_t	Tk_GetParam(Param_t &_parameter) { if (Inited == FALSE) return(E_NOT_INITED); _parameter = Running->Parameter; return(E_SUCCESS);};
 
 
 
@@ -381,12 +425,16 @@ inline Errno_t	Tk_GetParam(Param_t &_parameter) { if (Inited == FALSE) return(E_
 	// SEMAPHORE management
 	////////////////////////////////////////////////////////
 #if uMT_USE_TIMERS==1
-	Errno_t	Sm_Claim(SemId_t Sid, uMToptions_t Options, Timer_t timeout=(Timer_t)0);
+		Errno_t	Sm_Claim(SemId_t Sid, uMToptions_t Options, Timer_t timeout=(Timer_t)0);
+inline	Errno_t	isrSm_Claim(SemId_t Sid) {Sm_Claim(Sid, uMT_NOWAIT, 0); };		// uMT_NOWAIT!!!!!
 #else
 	Errno_t	Sm_Claim(SemId_t Sid, uMToptions_t Options);
 #endif
-	Errno_t	Sm_Release(SemId_t Sid);
-	Errno_t	Sm_SetQueueMode(SemId_t Sid, QueueMode_t Mode);
+inline	Errno_t	Sm_Release(SemId_t Sid) {return(doSm_Release(Sid, FALSE)); };
+inline	Errno_t	isrSm_Release(SemId_t Sid) {return(doSm_Release(Sid, NoResched > 0 ? FALSE : TRUE)); };
+
+
+		Errno_t	Sm_SetQueueMode(SemId_t Sid, QueueMode_t Mode);
 #endif
 
 
@@ -396,13 +444,14 @@ inline Errno_t	Tk_GetParam(Param_t &_parameter) { if (Inited == FALSE) return(E_
 	// EVENT management
 	////////////////////////////////////////////////////////
 #if uMT_USE_TIMERS==1
-	Errno_t	Ev_Receive(Event_t	eventin, uMToptions_t flags, Event_t *eventout, Timer_t timeout=(Timer_t)0);
+		Errno_t	Ev_Receive(Event_t	eventin, uMToptions_t flags, Event_t *eventout, Timer_t timeout=(Timer_t)0);
 #else
-	Errno_t	Ev_Receive(Event_t	eventin, uMToptions_t flags, Event_t *eventout);
+		Errno_t	Ev_Receive(Event_t	eventin, uMToptions_t flags, Event_t *eventout);
 #endif
 
 	// EVENT management can be called from ISR
-	Errno_t	iEv_Send(TaskId_t Tid, Event_t Event);
+inline 	Errno_t	isrEv_Send(TaskId_t Tid, Event_t Event) {return(doEv_Send(Tid, Event, FALSE));};
+inline 	Errno_t	Ev_Send(TaskId_t Tid, Event_t Event) {return(doEv_Send(Tid, Event, TRUE));};
 
 #endif
 
@@ -414,23 +463,23 @@ inline Errno_t	Tk_GetParam(Param_t &_parameter) { if (Inited == FALSE) return(E_
 	////////////////////////////////////////////////////////
 
 	// Wakeup after some time
-	Errno_t Tm_WakeupAfter(Timer_t timeout);	
+		Errno_t Tm_WakeupAfter(Timer_t timeout);	
 
 	// Send an event after some time
 //inline 	
-	Errno_t Tm_EvAfter(Timer_t timeout, Event_t Event, TimerId_t &TmId)
+		Errno_t Tm_EvAfter(Timer_t timeout, Event_t Event, TimerId_t &TmId)
 {
 	return(Timer_EventTimout(timeout, Event, TmId, (uMT_TM_IAM_AGENT | uMT_TM_SEND_EVENT))); 
 };
 
 	// Send an event every ticks
 //inline 
-	Errno_t Tm_EvEvery(Timer_t timeout, Event_t Event, TimerId_t &TmId)
+		Errno_t Tm_EvEvery(Timer_t timeout, Event_t Event, TimerId_t &TmId)
 {
 	return(Timer_EventTimout(timeout, Event, TmId, (uMT_TM_IAM_AGENT | uMT_TM_SEND_EVENT | uMT_TM_REPEAT)));
 };
 
-	Errno_t Tm_Cancel(TimerId_t TmId);
+		Errno_t Tm_Cancel(TimerId_t TmId);
 #endif
 
 };

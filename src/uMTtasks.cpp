@@ -104,12 +104,12 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 	if (_BadExit == NULL)
 		_BadExit = (FuncAddress_t)BadExit;
 
-	CpuStatusReg_t	CpuFlags = IntLock();
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
 
 	// Search for a empty task slot
 	if (UnusedQueue == NULL)
 	{
-		IntUnlock(CpuFlags);
+		isrKn_IntUnlock(CpuFlags);
 
 		DgbStringPrintLN("uMT: Tk_CreateTask(): E_NOMORE_TASKS");
 
@@ -140,7 +140,7 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 
 	ActiveTaskNo++;		// one more...
 
-	IntUnlock(CpuFlags);
+	isrKn_IntUnlock(CpuFlags);
 
 	CHECK_TASK_MAGIC(pTask, "Tk_CreateTask");
 
@@ -166,7 +166,7 @@ Errno_t	uMT::Tk_DeleteTask(TaskId_t Tid)
 	if (pTask->TaskStatus == S_UNUSED)
 		return(E_INVALID_TASKID);
 
-	CpuStatusReg_t	CpuFlags = IntLock();
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
 
 	ActiveTaskNo--;		// one less...
 
@@ -191,7 +191,7 @@ Errno_t	uMT::Tk_DeleteTask(TaskId_t Tid)
 		// It never returns!!!
 	}
 
-	IntUnlock(CpuFlags);
+	isrKn_IntUnlock(CpuFlags);
 
 	return(E_SUCCESS);
 
@@ -221,7 +221,7 @@ Errno_t	uMT::Tk_StartTask(TaskId_t Tid)
 	}
 
 
-	CpuStatusReg_t	CpuFlags = IntLock();
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
 
 	/////////////////////////////////////////
 	// Insert in the ready queue
@@ -229,7 +229,7 @@ Errno_t	uMT::Tk_StartTask(TaskId_t Tid)
 	ReadyTask(pTask);
 
 	/* ... and check for preemption */
-	Check4Preemption();
+	Check4Preemption(NoResched > 0 ? FALSE : TRUE);
 
 	//
 	// Starting a task shall NOT trigger a RoundRobin unless the Started task has got hogher priority.
@@ -237,7 +237,7 @@ Errno_t	uMT::Tk_StartTask(TaskId_t Tid)
 	// including "Tk_StartTask" other tasks
 	//
 
-	IntUnlock(CpuFlags);
+	isrKn_IntUnlock(CpuFlags);
 
 	return(E_SUCCESS);
 }
@@ -269,7 +269,7 @@ Errno_t	uMT::Tk_ReStartTask(TaskId_t Tid)
 		return(E_NOT_ALLOWED);
 	}
 
-	CpuStatusReg_t	CpuFlags = IntLock();
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
 
 	////////////////////////////////////////////
 	// Remove from any QUEUE
@@ -284,8 +284,8 @@ Errno_t	uMT::Tk_ReStartTask(TaskId_t Tid)
 	// Setup basic data again..
 	///////////////////////////////////////////////
 	pTask->TaskStatus = S_CREATED;
-	pTask->Priority = PRIO_NORMAL;
-
+//	pTask->Priority = PRIO_NORMAL;			// Priority is NOT reset.
+		
 	pTask->SavedSP = NewTask(pTask->StackBaseAddr, pTask->StackSize, pTask->StartAddress, pTask->BadExit);
 	
 #ifdef ZAPPED		// Cannot do it without a KERNEL private STACK
@@ -305,7 +305,7 @@ Errno_t	uMT::Tk_ReStartTask(TaskId_t Tid)
 
 
 	// Perform a StartTask
-	IntUnlock(CpuFlags);
+	isrKn_IntUnlock(CpuFlags);
 
 	// Start another task (not the Running)
 	return(Tk_StartTask(pTask->myTid));		// Do a StartTask
@@ -399,7 +399,7 @@ Errno_t	uMT::Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppri
 	if (npriority == 0)	/* Return current priority */
 		return(E_SUCCESS);
 
-	CpuStatusReg_t	CpuFlags = IntLock();
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
 
 	if (pTask == Running) 	/* Running task */
 	{
@@ -435,9 +435,9 @@ Errno_t	uMT::Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppri
 	}
 
 	/* ... and check for preemption */
-	Check4Preemption();
+	Check4Preemption(TRUE);
 
-	IntUnlock(CpuFlags);
+	isrKn_IntUnlock(CpuFlags);
 
 	return(E_SUCCESS);
 }

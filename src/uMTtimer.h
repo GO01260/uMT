@@ -58,6 +58,7 @@ class uTimer
 	/////////////////////////////////
 	friend unsigned uMTdoTicksWork();	// uMTarduinoSysTick.cpp
 	friend void uMT_SystemTicks();		// uMTarduinoSysTick.cpp
+	friend unsigned int sysTickHook();	// uMTarduinoSysTick.cpp
 
 	friend class uTask;
 	friend class uMT;

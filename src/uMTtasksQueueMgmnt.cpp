@@ -77,7 +77,7 @@ void	uMT::ReadyTask(uTask *pTask)
 // Entered with INTS disabled
 //
 ////////////////////////////////////////////////////////////////////////////////////
-void	uMT::Check4Preemption()
+void	uMT::Check4Preemption(Bool_t AllowPreemption)
 {
 	CHECK_INTS("Check4Preemption");		// Verify if INTS are disabled...
 
@@ -87,10 +87,10 @@ void	uMT::Check4Preemption()
 	{
 		/* If running task has lower priority than this
 		   task and can be preempted, force a rescheduling */
-		if (NoResched)	/* Rescheduling prevented */
-			NeedResched = TRUE; /* Set attention flag */
-		else							\
+		if (AllowPreemption)	
 			Suspend();	 	/* ...and suspend us */
+		else	/* Rescheduling prevented */
+			NeedResched = TRUE; /* Set attention flag */
 	}
 
 	/* Note: Resched() will put the running task on the ready list! */
@@ -108,11 +108,11 @@ void	uMT::Check4Preemption()
 ////////////////////////////////////////////////////////////////////////////////////
 void	uMT::ReadyTaskLocked(uTask *pTask)
 {
-	CpuStatusReg_t	CpuFlags = IntLock();
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
 
 	ReadyTask(pTask);
 
-	IntUnlock(CpuFlags);
+	isrKn_IntUnlock(CpuFlags);
 }
 
 

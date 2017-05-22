@@ -29,13 +29,19 @@
 
 #if uMT_USE_SEMAPHORES==1
 
+///////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT SEMAPHORE
+//
+////////////////////////////////////////////////////////////////////////////////////
+
 
 class uMTsem
 {
 	friend class uTask;
 	friend class uMT;
 
-	uint16_t		SemValue;	// Semaphore value
+	SemValue_t		SemValue;	// Semaphore value
 	uMTtaskQueue	SemQueue;	// Pointer to the task list waiting for this Semaphore
 
 	void Init()

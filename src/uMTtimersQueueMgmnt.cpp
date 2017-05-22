@@ -106,7 +106,7 @@ uTimer * uMT::TimerQ_Pop()
 	{
 		if (TotTimerQueued != 0)
 		{
-			iKn_FatalError(F("TimerQ_Pop: TimerQueue != TotalQueued"));
+			isrKn_FatalError(F("TimerQ_Pop: TimerQueue != TotalQueued"));
 		}
 
 		return(NULL);
@@ -293,7 +293,7 @@ void uMT::TimerQ_PushFree(uTimer *pTimer)
 		{
 			SerialPrintln(F("uMT: TimerQ_PushFree: trying to free an TASK Timer"));
 
-			iKn_FatalError();
+			isrKn_FatalError();
 
 		}
 #endif

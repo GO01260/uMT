@@ -54,32 +54,44 @@
 
 #ifdef WIN32
 
+#define uMT_STATIC_STACKS		0			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
+
 #define uMT_MAX_TASK_NUM		10			// Max task number (cannot be less than 3!!!)
 #define uMT_MAX_SEM_NUM			16			// Max number of Semaphores
+#define uMT_MAX_EVENTS_NUM		16			// How many Events per task
+
 #define uMT_STACK_SIZE			256			// STACK size
 #define uMT_IDLE_STACK_SIZE		128			// IDLE task STACK size
-#define uMT_STATIC_STACKS		1			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
+#define uMT_TID1_STACK_SIZE		uMT_STACK_SIZE	// STACK size for Arduino loop() task
+
+#define malloc(x)			x
+#define free(x)				
 
 #else
 
 #if defined(ARDUINO_ARCH_SAM)
 
-#define uMT_STATIC_STACKS		0			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
-
 #define uMT_MAX_TASK_NUM		20			// Max task number (cannot be less than 3!!!)
 #define uMT_MAX_SEM_NUM			32			// Max number of Semaphores
+#define uMT_MAX_EVENTS_NUM		32			// How many Events per task
+
+#define uMT_STATIC_STACKS		0			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
 #define uMT_STACK_SIZE			1024		// STACK size
 #define uMT_TID1_STACK_SIZE		uMT_STACK_SIZE	// STACK size for Arduino loop() task
 #define uMT_IDLE_STACK_SIZE		1024		// IDLE task STACK size
+
+#undef uMT_USE_TIMERS
+#define uMT_USE_TIMERS			0			// Don't use Timers, not working yest
 
 #else
 
 #if defined(__AVR_ATmega2560__)	// ARDUINO MEGA
 
-#define uMT_STATIC_STACKS		0			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
-
 #define uMT_MAX_TASK_NUM		10			// Max task number (cannot be less than 3!!!)
 #define uMT_MAX_SEM_NUM			16			// Max number of Semaphores
+#define uMT_MAX_EVENTS_NUM		16			// How many Events per task
+
+#define uMT_STATIC_STACKS		0			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
 #define uMT_STACK_SIZE			256			// STACK size
 #define uMT_TID1_STACK_SIZE		uMT_STACK_SIZE	// STACK size for Arduino loop() task
 #define uMT_IDLE_STACK_SIZE		96			// IDLE task STACK size
@@ -87,11 +99,13 @@
 
 #else		// ARDUINO UNO
 
-#define uMT_STATIC_STACKS		1			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
 
 #define uMT_MAX_TASK_NUM		5			// Max task number (cannot be less than 3!!!)
 #define uMT_MAX_SEM_NUM			8			// Max number of Semaphores
-#define uMT_STACK_SIZE			230			// STACK size
+#define uMT_MAX_EVENTS_NUM		16			// How many Events per task
+
+#define uMT_STATIC_STACKS		1			// Where to allocate tasks' stacks: STATIC or MALLOC() in high memory
+#define uMT_STACK_SIZE			200			// STACK size
 #define uMT_TID1_STACK_SIZE		uMT_STACK_SIZE	// STACK size for Arduino loop() task
 #define uMT_IDLE_STACK_SIZE		96			// IDLE task STACK size
 
@@ -99,8 +113,6 @@
 #undef uMT_USE_RESTARTTASK
 #define uMT_USE_RESTARTTASK		0			// tk_Restart() not enabled for ARDUINO UNO
 
-#undef uMT_USE_TIMERS
-#define uMT_USE_TIMERS			0			// Don't use Timers
 
 #endif		// ATmega2560
 #endif		// SAM architecture
@@ -137,7 +149,8 @@
 //	KERNEL Version
 //
 ////////////////////////////////////////////////////////////////////////////////////
-#define uMT_VERSION_NUMBER		0x0102	// Version x.y
+#define uMT_VERSION_NUMBER		0x0150	// Version 1.5.0 (version x.y.z: X = 8 bits, Y and Z = 4 bits)
+
 
 
 /////////////////////////// EOF

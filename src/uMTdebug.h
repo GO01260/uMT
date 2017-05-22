@@ -49,8 +49,8 @@
 //#define SPrF(x)  
 //#define SPrLF(x)
 
-#define CHECK_TASK_MAGIC(task, message) { if (task->magic != uMT_TASK_MAGIC) Kernel.iKn_FatalError(); }
-#define CHECK_TIMER_MAGIC(timer, message) { if (timer->magic != uMT_TIMER_MAGIC) Kernel.iKn_FatalError(); }
+#define CHECK_TASK_MAGIC(task, message) { if (task->magic != uMT_TASK_MAGIC) Kernel.isrKn_FatalError(); }
+#define CHECK_TIMER_MAGIC(timer, message) { if (timer->magic != uMT_TIMER_MAGIC) Kernel.isrKn_FatalError(); }
 #define CHECK_INTS(message)
 
 

@@ -65,9 +65,6 @@ typedef uint8_t			TaskPrio_t;			// 8 bits, task priority 0-16
 #define uMT_TASK_MAGIC			0xDEAD	// Magic value...
 
 
-typedef	uint8_t			*StackPtr_t;		// Stack alignement
-typedef uint16_t		StackSize_t;		// 16 bits, system dependent. In MEGA the number of bits in an address is 22 but 16 seems to be sufficient
-typedef uint8_t			CpuStatusReg_t;		// 8 bits - Lock/Unlock
 typedef uint8_t			TaskId_t;			// 8 bits
 
 
@@ -110,6 +107,7 @@ class uTask
 	friend void KLL_MainLoop();			// Test0_KernelLowLevel.cpp
 	friend unsigned uMTdoTicksWork();	// uMTarduinoSysTick.cpp
 	friend void uMT_SystemTicks();		// uMTarduinoSysTick.cpp
+	friend unsigned int sysTickHook();	// uMTarduinoSysTick.cpp
 
 private:
 

@@ -57,14 +57,14 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 	if (SemId_Check(Sid) == FALSE)
 		return(E_INVALID_SEMID);
 
-	CpuStatusReg_t	CpuFlags = IntLock();	/* Enter critical region */
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();	/* Enter critical region */
 
 	uMTsem *pSem = &SemList[Sid];
 
 	if (pSem->SemValue > 0) // Semaphore is free
 	{
 		pSem->SemValue--;		// Take the semaphore
-		IntUnlock(CpuFlags);	/* End of critical region */
+		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 		return(E_SUCCESS);
 	}
@@ -75,7 +75,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 
 	if (Options == uMT_NOWAIT)
 	{
-		IntUnlock(CpuFlags);	/* End of critical region */
+		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 		return(E_WOULD_BLOCK);
 	}
@@ -140,7 +140,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 #if uMT_USE_TIMERS==1
 	if (timeout != (Timer_t)0)		// A timer was set
 	{
-		IntLock();	/* Reentering critical region, do NOT save FLAGS */
+		isrKn_IntLock();	/* Reentering critical region, do NOT save FLAGS */
 
 		DgbStringPrint("uMT(");
 		DgbValuePrint(TickCounter.Low);
@@ -159,7 +159,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 
 				DgbStringPrintLN("E_TIMEOUT");
 
-				IntUnlock(CpuFlags);	/* End of critical region */
+				isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 				return(E_TIMEOUT);	/* Return error if any */
 			}
@@ -183,24 +183,24 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 				DgbStringPrint("): Sm_Claim(): Timer Flag = 0x");
 				DgbValuePrint2LN(pTimer->Flags, HEX);
 
-				iKn_FatalError(F("TimerQ_CancelTimer: Timer not found!"));
+				isrKn_FatalError(F("TimerQ_CancelTimer: Timer not found!"));
 			}
 		}
 	}
 #endif
 		
 
-	IntUnlock(CpuFlags);	/* End of critical region */
+	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
-//	uMT::Sm_Release
+//	uMT::doSm_Release
 //
 ////////////////////////////////////////////////////////////////////////////////////
-Errno_t	uMT::Sm_Release(SemId_t Sid)
+Errno_t	uMT::doSm_Release(SemId_t Sid, Bool_t AllowPreemption)
 {
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
@@ -213,7 +213,7 @@ Errno_t	uMT::Sm_Release(SemId_t Sid)
 		return(E_OVERFLOW_SEM);
 	}
 
-	CpuStatusReg_t	CpuFlags = IntLock();	/* Enter critical region */
+	CpuStatusReg_t	CpuFlags = isrKn_IntLock();	/* Enter critical region */
 
 	uMTsem *pSem = &SemList[Sid];
 
@@ -229,7 +229,8 @@ Errno_t	uMT::Sm_Release(SemId_t Sid)
 		ReadyTask(pTask);
 
 		/* ... and check for preemption */
-		Check4Preemption();
+		Check4Preemption(AllowPreemption);
+//		Check4Preemption(NoResched > 0 ? FALSE : TRUE);
 
 	}
 	else
@@ -238,7 +239,7 @@ Errno_t	uMT::Sm_Release(SemId_t Sid)
 		pSem->SemValue++;
 	}
 
-	IntUnlock(CpuFlags);	/* End of critical region */
+	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 }

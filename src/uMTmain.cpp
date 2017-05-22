@@ -92,6 +92,15 @@ void 	uMT::SetupTaskStacks()
 
 		TaskList[idx].Next = (idx == uMT_MAX_TASK_NUM - 1 ? NULL : &TaskList[idx + 1]);
 	}
+
+
+	uTask *	pTask = &TaskList[uMT_ARDUINO_TASK_NUM];
+
+	pTask->StackBaseAddr = (StackPtr_t)Kn_GetSPbase();				// Assign some sensible value...
+	pTask->StackSize = (StackPtr_t)Kn_GetRAMend() - pTask->StackBaseAddr;	// Assign some sensible value...
+
+	// Free RAM after stack allocation
+	FreeRAM_0 = (StackPtr_t)Kn_GetFreeRAM();
 }
 
 #else
@@ -104,15 +113,24 @@ void 	uMT::SetupTaskStacks()
 ////////////////////////////////////////////////////////////////////////////////////
 void 	uMT::SetupTaskStacks()
 {
-	
-	// Determine total memory for STACKS
-	SRAMsize_t TotStackSize = (uMT_MAX_TASK_NUM * uMT_STACK_SIZE);
+#if defined(ARDUINO_ARCH_SAM)
+#define MALLOC_HDR	8		// bytes are used for MALLOC headers
+#else
+#define MALLOC_HDR	4		// bytes are used for MALLOC headers
+#endif
 
-	// Determine memory size to return to malloc()
-	SRAMsize_t Mem2ReturnSize = Kn_GetFreeSRAM() - TotStackSize - (SRAMsize_t)uMT_TID1_STACK_SIZE;
+	// Get the amount of RAM available from RAM-END (RAMEND - HeapPtr)
+	 StackPtr_t RAMendFree = Kn_GetFreeRAMend();		// It can be called only at the beginning....
+
+	// Determine total memory for STACKS: ignore IDLE and Tid1
+	StackPtr_t TotStackSize = ((uMT_MAX_TASK_NUM - 2) * uMT_STACK_SIZE);
+
+	// Determine memory size to return to malloc() for application use
+	// Kn_GetFreeRAMend() returns the free memory INCLUDING the STACK for the Arduiono loop() task
+	StackPtr_t Mem2ReturnSize = RAMendFree - TotStackSize - (StackPtr_t)uMT_TID1_STACK_SIZE - MALLOC_HDR;
 
 	DgbStringPrint("uMT: SetupTaskStacks(): Arduino free RAM = ");
-	DgbValuePrint((unsigned int)Kn_GetFreeSRAM());
+	DgbValuePrint((unsigned int)RAMendFree);
 
 	DgbStringPrint(" TotStackSize = ");
 	DgbValuePrint((unsigned int)TotStackSize);
@@ -120,28 +138,29 @@ void 	uMT::SetupTaskStacks()
 	DgbStringPrint(" Mem2ReturnSize = ");
 	DgbValuePrintLN((unsigned int)Mem2ReturnSize);
 
+	// Free RAM after stack allocation
+	FreeRAM_0 = Mem2ReturnSize;
 
 	// Malloc memory to return to malloc()
-	uint8_t *Mem2ReturnPtr = malloc(Mem2ReturnSize);
+	uint8_t *Mem2ReturnPtr = (uint8_t *)malloc(Mem2ReturnSize);
 
 	if (Mem2ReturnPtr == NULL)
 	{
-		iKn_FatalError(F("Cannot allocate memory for STACKS/1"));
+		isrKn_FatalError(F("Cannot allocate memory for STACKS/1"));
 	}
 
 
 	// Malloc memory for Stacks (do not allocate TASK 1 [Arduino loop()] stack)
-	uint8_t *Mem4StacksPtr = malloc(TotStackSize);
+	uint8_t *Mem4StacksPtr = (uint8_t *)malloc(TotStackSize);
 
 	if (Mem4StacksPtr == NULL)
 	{
-		iKn_FatalError(F("Cannot allocate memory for STACKS/2"));
+		isrKn_FatalError(F("Cannot allocate memory for STACKS/2"));
 	}
 
 
 	// Free memory to return to malloc()
 	free(Mem2ReturnPtr);
-
 
 	//
 	// Setup Task List
@@ -158,6 +177,14 @@ void 	uMT::SetupTaskStacks()
 
 		TaskList[idx].Next = (idx == uMT_MAX_TASK_NUM - 1 ? NULL : &TaskList[idx + 1]);
 	}
+
+
+	// Setup some sensible values for ARDUINO loop() task (Tid 1)
+	uTask *	pTask = &TaskList[uMT_ARDUINO_TASK_NUM];
+
+	pTask->StackBaseAddr = (StackPtr_t)Mem4StacksPtr;				// Assign some sensible value...
+	pTask->StackSize = Kn_GetRAMend() - pTask->StackBaseAddr;	// Assign some sensible value...
+
 }
 
 
@@ -184,6 +211,8 @@ Errno_t	uMT::Kn_Start(Bool_t _TimeSharingEnabled, Bool_t _BlinkingLED)
 	// Init members
 	Inited = TRUE;
 	Running = (uTask *)NULL;
+
+	FreeRAM_0 = 0;				// Clear
 
 	ReadyQueue.Init();
 
@@ -243,7 +272,7 @@ Errno_t	uMT::Kn_Start(Bool_t _TimeSharingEnabled, Bool_t _BlinkingLED)
 	// Setup Idle task
 	IdleTaskPtr = &TaskList[uMT_IDLE_TASK_NUM];	// Pointing to the IDLE task
 	IdleTaskPtr->TaskStatus = S_READY;		// Always ready!
-	IdleTaskPtr->StackBaseAddr = &IdleTaskStack[0];
+	IdleTaskPtr->StackBaseAddr = (StackPtr_t)&IdleTaskStack[0];
 	IdleTaskPtr->StackSize = uMT_IDLE_STACK_SIZE;
 	IdleTaskPtr->Priority = PRIO_LOWEST;
 
@@ -258,15 +287,7 @@ Errno_t	uMT::Kn_Start(Bool_t _TimeSharingEnabled, Bool_t _BlinkingLED)
 	// There must be ALWAYS a RUNNING task...
 	//
 	Running = &TaskList[uMT_ARDUINO_TASK_NUM];
-	Running->SavedSP = GetSP();
-
-#if defined(ARDUINO_ARCH_AVR) // ARDUINO MEGA or UNO
-	Running->StackBaseAddr = Kn_GetSPbase();								// Assign some sensible value...
-	Running->StackSize = Running->SavedSP - Running->StackBaseAddr + 16;	// Assign some sensible value...
-#endif
-
-
-
+	Running->SavedSP = Kn_GetSP();
 	Running->TaskStatus = S_RUNNING;
 	Running->Priority = PRIO_NORMAL;
 	TimeSlice = uMT_TICKS_TIMESHARING; // Load
@@ -286,6 +307,30 @@ Errno_t	uMT::Kn_Start(Bool_t _TimeSharingEnabled, Bool_t _BlinkingLED)
 	return(E_SUCCESS);
 }
 
+
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::Kn_GetConfiguration
+//
+////////////////////////////////////////////////////////////////////////////////////
+Errno_t	uMT::Kn_GetConfiguration(uMTcfg &Cfg)
+{
+	Cfg.Use_Events			= uMT_USE_EVENTS;
+	Cfg.Use_Semaphores		= uMT_USE_SEMAPHORES;
+	Cfg.Use_Timers			= uMT_USE_TIMERS;
+	Cfg.Use_RestartTask		= uMT_USE_RESTARTTASK;
+	Cfg.Use_PrintInternals	= uMT_USE_PRINT_INTERNALS;
+
+	Cfg.Max_Tasks			= uMT_MAX_TASK_NUM;
+	Cfg.Max_Semaphores		= uMT_MAX_SEM_NUM;
+	Cfg.Max_Events			= uMT_MAX_EVENTS_NUM;
+	Cfg.Max_AgentTimers		= uMT_MAX_TIMER_AGENT_NUM;
+	Cfg.Max_AppTasks_Stack	= uMT_STACK_SIZE;
+	Cfg.Max_Task1_Stack		= uMT_TID1_STACK_SIZE;
+	Cfg.Max_Idle_Stack		= uMT_IDLE_STACK_SIZE;
+
+	return(E_SUCCESS);
+}
 
 
 //////////////////////////// EOF

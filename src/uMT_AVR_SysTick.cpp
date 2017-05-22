@@ -40,9 +40,8 @@
 #include <avr/wdt.h>
 
 
-extern unsigned uMTdoTicksWork();
 extern void uMT_SystemTicks();
-
+extern unsigned uMTdoTicksWork();
 
 
 
@@ -298,131 +297,9 @@ ISR(TIMER0_OVF_vect, ISR_NAKED)
 
 
 
-
-
-
 ////////////////////////////////////////////////////////////////////////////////////
 //
-//	uMT::SetupSysTicks
-//
-////////////////////////////////////////////////////////////////////////////////////
-void uMT::SetupSysTicks()
-{
-	pinMode(LED_BUILTIN, OUTPUT);
-	digitalWrite(LED_BUILTIN, LOW);
-
-	// Align SystemTick
-	Kernel.TickCounter.Low = timer0_millis;		// Simply copy ticks counter...
-}
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//	iKn_Reboot - ARDUINO_UNO/MEGA
-//
-// It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
-//
-/////////////////////////////////////////////////////////////////////////////////////////////////
-void	uMT::iKn_Reboot()
-{
-	NoResched++;		// Prevent rescheduling....
-
-
-	cli();		// Disable interrupts
-
-
-#ifdef ZAPPED
-	__asm__ __volatile__ ("wdr");	// Reset WatchDog
-
-	WDT_SetTimer(WDTO_4S);		// 4 seconds..
-	WDTCSR |= _BV(WDE);			// RESET!
-
-#else
-	__asm__ __volatile__ ("wdr");	// Reset WatchDog
-	wdt_enable(WDTO_4S); // turn on the WatchDog 
-#endif
-	
-	sei();		// Enable interrupts
-
-
-	while (1) 
-	{ 
-		// do nothing and wait for the eventual...
-	} 
-}
-
-
-
-
-////////////////////////////////////////////////////////////////////////////////////
-//
-//	uMT::uMTdoTicksWork
-//
-// Return 1 is a Reschedule is needed
-////////////////////////////////////////////////////////////////////////////////////
-inline unsigned uMTdoTicksWork()
-{
-	int	ForceReschedule = 0;		// Assume NO
-
-	// Decrement slice counter
-	Kernel.TimeSlice--;
-
-	// Can we be preempted?
-	if (Kernel.NoPreempt == TRUE)
-		return(0);		// NO
-
-	// Can we be rescheduled?
-	if (Kernel.NoResched != 0)
-		return(0);		// NO
-
-#if uMT_USE_TIMERS==1
-	// Check if some ALARM is expired
-	if (Kernel.TimerQueue != NULL)
-	{
-		if (Kernel.TimerQueue->NextAlarm <= Kernel.TickCounter)
-		{
-			Kernel.AlarmExpired = TRUE;
-			ForceReschedule = 1;
-		}
-	}
-#endif
-
-	if (Kernel.NeedResched)
-	{
-		ForceReschedule = 1;
-	}
-	else
-	{
-		if (Kernel.TimeSharingEnabled == TRUE)
-		{
-			if (Kernel.TimeSlice <= 0)
-			{
-				if (Kernel.ReadyQueue.Head != NULL)
-					ForceReschedule = 1;
-				else
-					Kernel.TimeSlice = (Kernel.Running == Kernel.IdleTaskPtr ? uMT_IDLE_TIMEOUTVALUE : uMT_TICKS_TIMESHARING); // Reload
-			}
-		}
-	}
-
-	if (ForceReschedule == 0)
-	{
-		// Check for higher priority tasks
-		// NoPreempt & NoResched already checked before...
-		if (Kernel.ReadyQueue.Head != NULL && Kernel.ReadyQueue.Head->Priority > Kernel.Running->Priority)
-		{
-			ForceReschedule = 1;
-		}
-	}
-
-	return(ForceReschedule);
-}
-
-
-
-////////////////////////////////////////////////////////////////////////////////////
-//
-//	uMT::uMT_SystemTicks
+//	uMT_SystemTicks
 //
 // This is shielded in a routine to allow to "FRIEND"ly access data in uMT C++ class
 //
@@ -468,6 +345,62 @@ inline void uMT_SystemTicks()
 		Kernel.Suspend2();
 	}
 }
+
+
+
+
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::SetupSysTicks
+//
+////////////////////////////////////////////////////////////////////////////////////
+void uMT::SetupSysTicks()
+{
+	pinMode(LED_BUILTIN, OUTPUT);
+	digitalWrite(LED_BUILTIN, LOW);
+
+	// Align SystemTick
+	Kernel.TickCounter.Low = timer0_millis;		// Simply copy ticks counter...
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	isrKn_Reboot - ARDUINO_UNO/MEGA
+//
+// It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void	uMT::isrKn_Reboot()
+{
+	NoResched++;		// Prevent rescheduling....
+
+
+	cli();		// Disable interrupts
+
+
+#ifdef ZAPPED
+	__asm__ __volatile__ ("wdr");	// Reset WatchDog
+
+	WDT_SetTimer(WDTO_4S);		// 4 seconds..
+	WDTCSR |= _BV(WDE);			// RESET!
+
+#else
+	__asm__ __volatile__ ("wdr");	// Reset WatchDog
+	wdt_enable(WDTO_4S); // turn on the WatchDog 
+#endif
+	
+	sei();		// Enable interrupts
+
+
+	while (1) 
+	{ 
+		// do nothing and wait for the eventual...
+	} 
+}
+
+
+
 
 #endif
 

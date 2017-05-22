@@ -99,30 +99,32 @@ StackPtr_t __attribute__ ((noinline)) uMT::NewTask(
 	// Arduino UNO is using a byte aligned Stack, so new SP is...
 	TaskStack += (StackSize - 1);
 
+	uint8_t	*pStack = (uint8_t	*)TaskStack;
+
 	uint16_t Addr = (uint16_t)BadExit;	// Last return is BadExit()...
-	*TaskStack-- = Addr & 0xff;
-	*TaskStack-- = Addr >> 8;
+	*pStack-- = Addr & 0xff;
+	*pStack-- = Addr >> 8;
 
 #if defined(__AVR_ATmega2560__)
-	*TaskStack-- = 0;
+	*pStack-- = 0;
 #endif
 
 	Addr = (uint16_t)TaskStartAddr;	// Start address of the task
-	*TaskStack-- = Addr & 0xff;
-	*TaskStack-- = Addr >> 8;
+	*pStack-- = Addr & 0xff;
+	*pStack-- = Addr >> 8;
 
 #if defined(__AVR_ATmega2560__)
-	*TaskStack-- = 0;
+	*pStack-- = 0;
 #endif
 
 
 	// Store registers in the stack + SREG
 	for (int a = 0; a < 33; a++)
 	{
-		*TaskStack-- = (uint8_t)0;
+		*pStack-- = (uint8_t)0;
 	}
 
-	return(TaskStack);
+	return((StackPtr_t)pStack);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -211,31 +213,31 @@ void __attribute__ ((noinline)) uMT::Suspend2()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	IntLock - ARDUINO_UNO/MEGA
+//	isrKn_IntLock - ARDUINO_UNO/MEGA
 //
 // It returns the status register & disables INTERRUPT (GLOBAL)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-CpuStatusReg_t uMT::IntLock()
+CpuStatusReg_t uMT::isrKn_IntLock()
 {
 	uint8_t oldSREG = SREG;
 
 	cli();		/* No interrupts now! */
 
 
-//	CheckInterrupts(F("IntLock"));
+//	CheckInterrupts(F("isrKn_IntLock"));
 
 	return((CpuStatusReg_t)oldSREG);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	IntUnlock - ARDUINO_UNO/MEGA
+//	isrKn_IntUnlock - ARDUINO_UNO/MEGA
 //
 // It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void uMT::IntUnlock(CpuStatusReg_t Param)
+void uMT::isrKn_IntUnlock(CpuStatusReg_t Param)
 {
 
 //	sei();
@@ -254,18 +256,17 @@ extern unsigned int __bss_end;
 extern unsigned int __heap_start;
 extern void *__brkval;
 
-SRAMsize_t uMT::Kn_GetFreeSRAM()
+StackPtr_t uMT::Kn_GetFreeRAM()
 {
 	// Save Old SP value
-	uint16_t *StackPtr = (uint16_t *)(SP);
-	SRAMsize_t FreeSRAM;
+	uint16_t StackPtr = (uint16_t)(SP);
+	StackPtr_t FreeSRAM;
 
-	// heap is empty, use bss as start memory address
-	if ((uint16_t)__brkval == 0)
-		FreeSRAM = (SRAMsize_t)((uint16_t)&StackPtr - (uint16_t)&__bss_end);
-		// use heap end as the start of the memory address
-	else
-		FreeSRAM = (SRAMsize_t)((uint16_t)StackPtr - (uint16_t)__brkval);
+	if ((uint16_t)__brkval == 0)	// heap is empty, use bss as start memory address
+		FreeSRAM = (StackPtr_t)((uint16_t)StackPtr - (uint16_t)&__bss_end);
+		
+	else							// use heap end as the start of the memory address
+		FreeSRAM = (StackPtr_t)((uint16_t)StackPtr - (uint16_t)__brkval);
 
 	return(FreeSRAM);
 }
@@ -274,8 +275,10 @@ SRAMsize_t uMT::Kn_GetFreeSRAM()
 //
 //	Kn_GetSPbase - ARDUINO_UNO/MEGA
 //
+// Only for static STACK allocation
+//
 /////////////////////////////////////////////////////////////////////////////////////////////////
-uint16_t uMT::Kn_GetSPbase()
+StackPtr_t uMT::Kn_GetSPbase()
 {
 	if ((uint16_t)__brkval == 0)
 		return ((uint16_t)&__bss_end);		// heap is empty, use bss as start memory address
@@ -284,12 +287,44 @@ uint16_t uMT::Kn_GetSPbase()
 }
 
 
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	Kn_GetRAMend - ARDUINO_UNO/MEGA
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+StackPtr_t uMT::Kn_GetRAMend()
+{
+	return(RAMEND);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	Kn_GetFreeRAMend - ARDUINO_UNO/MEGA
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+StackPtr_t uMT::Kn_GetFreeRAMend()
+{
+	StackPtr_t FreeRAM;
+	
+	if ((uint16_t)__brkval == 0)	// heap is empty, use bss as start memory address
+		FreeRAM = (StackPtr_t)((uint16_t)RAMEND - (uint16_t)&__bss_end);
+		
+	else							// use heap end as the start of the memory address
+		FreeRAM = (StackPtr_t)((uint16_t)RAMEND - (uint16_t)__brkval);
+
+	return(FreeRAM);
+}
+
+
+
+
 #if uMT_SAFERUN==1
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //	CheckInterrupts - ARDUINO_UNO
 //
-// CheckTimerMagic
+// CheckInterrupts
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
 void uMT::CheckInterrupts(const __FlashStringHelper *String)
@@ -306,7 +341,7 @@ void uMT::CheckInterrupts(const __FlashStringHelper *String)
 		Serial.println(String);
 		Serial.flush();
 
-		iKn_FatalError();
+		isrKn_FatalError();
 	}
 }
 

@@ -47,7 +47,7 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CpuStatusReg_t CpuFlags = IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
 
 	if (timeout != (Timer_t)0)
 	{
@@ -69,6 +69,7 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 		Running->TaskStatus = S_TBLOCKED;
 		pTimer->NextAlarm = TickCounter + timeout;
 		pTimer->Timeout = timeout;
+
 // NOT NEEDED		pTimer->pTask = Running;		// Running task
 		pTimer->Flags = uMT_TM_IAM_TASK;	// To reset other flags
 
@@ -99,7 +100,7 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 	// When returned, timeout is expired
 	// Interrupts already enabled!
 	
-	IntUnlock(CpuFlags);	/* End of critical region, technically NOT needed  */
+	isrKn_IntUnlock(CpuFlags);	/* End of critical region, technically NOT needed  */
 
 	return(E_SUCCESS);
 }
@@ -121,14 +122,14 @@ Errno_t uMT::Timer_EventTimout(Timer_t timeout, Event_t Event, TimerId_t &TmId, 
 	if (timeout == (Timer_t)0)
 		return(E_INVALID_TIMEOUT);
 
-	CpuStatusReg_t CpuFlags = IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
 
 	// Get a FREE TIMER
 	uTimer *pTimer = TimerQ_PopFree();
 
 	if (pTimer == NULL)
 	{
-		IntUnlock(CpuFlags);	/* End of critical region */
+		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 		return(E_NOMORE_TIMERS);
 	}
 
@@ -160,7 +161,7 @@ Errno_t uMT::Timer_EventTimout(Timer_t timeout, Event_t Event, TimerId_t &TmId, 
 	// Insert in the TIMER queue
 	TimerQ_Insert(pTimer);
 
-	IntUnlock(CpuFlags);	/* End of critical region */
+	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 }
@@ -204,11 +205,11 @@ Errno_t uMT::Tm_Cancel(TimerId_t TmId)
 		return(E_INVALID_TIMERID);
 
 
-	CpuStatusReg_t CpuFlags = IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
 
 	Errno_t errno = TimerQ_CancelTimer(Tmid2TimerPtr(TmId));
 
-	IntUnlock(CpuFlags);	/* End of critical region */
+	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(errno);
 }

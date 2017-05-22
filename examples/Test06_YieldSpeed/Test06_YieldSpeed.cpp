@@ -38,7 +38,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 
 void SETUP() 
@@ -54,7 +54,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("================= Yield Speed test ================="));
 	Serial.flush();
@@ -176,7 +176,9 @@ void LOOP()		// TASK TID=1
 	Serial.println(F("================= Yield Speed test END ================="));
 	Serial.flush();
 
-	Kernel.iKn_Reboot();
+	delay(5000);
+
+	Kernel.isrKn_Reboot();
 
 	while (1)
 		;

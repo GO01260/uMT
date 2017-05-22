@@ -38,7 +38,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 
 void SETUP() 
@@ -54,7 +54,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(uMT::Kn_GetFreeSRAM());
+	Serial.println(uMT::Kn_GetFreeRAM());
 
 	Serial.println(F("================= TASK Delete test ================="));
 	Serial.flush();

@@ -39,7 +39,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 #define	SEM_ID_01		1		// Semaphore id
 #define	SEM_ID_02		2		// Semaphore id
@@ -58,7 +58,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("MySetup(): => Kernel.Kn_Start()"));
 	Serial.flush();
@@ -79,12 +79,12 @@ static void Task2()
 	Serial.println(myTid);
 	Serial.flush();
 
-	Timer_t OldSysTick = Kernel.iKn_GetKernelTick();
+	Timer_t OldSysTick = Kernel.isrKn_GetKernelTick();
 	Timer_t OldSMillis = millis();
 
 	while (1)
 	{
-		Timer_t NowSysTick = Kernel.iKn_GetKernelTick();
+		Timer_t NowSysTick = Kernel.isrKn_GetKernelTick();
 		Timer_t DeltaSysTick = (NowSysTick - OldSysTick) * 1000 / uMT_TICKS_SECONDS;	// in milliseconds
 		OldSysTick = NowSysTick;
 
@@ -104,6 +104,7 @@ static void Task2()
 		Serial.print(F("  Delta in millis() => "));
 		Serial.println(DeltaMillis);
 		Serial.flush();
+
 		delay(100);
 
 	}
@@ -144,6 +145,7 @@ void LOOP()		// TASK TID=1
 		Serial.print(F("  millis() => "));
 		Serial.println(millis());
 		Serial.flush();
+
 		delay(100);
 	}
   

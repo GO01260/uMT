@@ -38,7 +38,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 #if uMT_USE_EVENTS==1
 
@@ -60,7 +60,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("MySetup(): => Kernel.Kn_Start()"));
 	Serial.flush();
@@ -83,17 +83,17 @@ static void Task2()
 	Serial.println(myTid);
 	Serial.flush();
 
-	Timer_t OldSysTick = Kernel.iKn_GetKernelTick();
+	Timer_t OldSysTick = Kernel.isrKn_GetKernelTick();
 	Timer_t OldSMillis = millis();
 
 	while (1)
 	{
-		Serial.println(F("  Task2(): iEv_Send(1, EVENT_A)"));
+		Serial.println(F("  Task2(): Ev_Send(1, EVENT_A)"));
 		Serial.flush();
 
-		Kernel.iEv_Send(1, EVENT_A);
+		Kernel.Ev_Send(1, EVENT_A);
 
-		Timer_t NowSysTick = Kernel.iKn_GetKernelTick();
+		Timer_t NowSysTick = Kernel.isrKn_GetKernelTick();
 		Timer_t DeltaSysTick = (NowSysTick - OldSysTick) * 1000 / uMT_TICKS_SECONDS;	// in milliseconds
 		OldSysTick = NowSysTick;
 
@@ -206,24 +206,24 @@ void LOOP()		// TASK TID=1
 			Serial.println((unsigned)eventout);
 			Serial.flush();
 
-			Kernel.iKn_FatalError();
+			Kernel.isrKn_FatalError();
 		}
 		else
 		{
 			Serial.print(F(" Task1(): => "));
 			Serial.print(++counter);
 			Serial.print(F("  KernelTickCounter => "));
-			Serial.println(Kernel.iKn_GetKernelTick());
+			Serial.println(Kernel.isrKn_GetKernelTick());
 			Serial.flush();
 		}
 
 
-		Serial.print(F(" Task1(): iEv_Send("));
+		Serial.print(F(" Task1(): Ev_Send("));
 		Serial.print(Tid);
 		Serial.println(F(", EVENT_B)"));
 		Serial.flush();
 
-		Kernel.iEv_Send(Tid, EVENT_B);
+		Kernel.Ev_Send(Tid, EVENT_B);
 	}
   
 }

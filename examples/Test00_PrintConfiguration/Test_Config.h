@@ -1,7 +1,6 @@
 
 // Demo configuration
 
-#define TEST_COMPLEX_1			1 
-
+#define TEST_PRINTCONFIGURATION			1	
 
 /////////// EOF

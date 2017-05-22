@@ -51,8 +51,10 @@
 #define SUPPLIER_SEM			15
 #define ALL_EVENTS			0x7FFF		// 15 events (except 16) 
 
-#define MAX_PRODUCERS		6			// How many producers
+#define MAX_PRODUCERS		(uMT_MAX_TASK_NUM - 4)			// How many producers: 1, IDLE, 1 Monitor, 1 Suplier, Consumer
 #define	SIMPLE_MONITOR		0
+
+#define SUPPLIER_SEM		(uMT_MAX_SEM_NUM - 1)
 
 
 #define VERBOSE_PRODUCER	0
@@ -75,7 +77,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("================= Farmer/Producer/Consumer test ================="));
 
@@ -91,6 +93,12 @@ void SETUP()
 
 	Kernel.Kn_Start();
 
+	uMTcfg Cfg;
+
+	Kernel.Kn_GetConfiguration(Cfg);
+	Kernel.Kn_PrintConfiguration(Cfg);
+
+
 }
 
 
@@ -100,10 +108,11 @@ void CheckError(const __FlashStringHelper *Msg, Errno_t error)
 	{
 		Serial.print(F("FATAL ERROR: "));
 		Serial.print(Msg);
+		Serial.print(F(" - ERRNO = "));
 		Serial.println((unsigned)error);
 		Serial.flush();
 
-		Kernel.iKn_FatalError();
+		Kernel.isrKn_FatalError();
 	}
 }
 
@@ -225,7 +234,7 @@ void Producer()
 		CheckError(F("Producer"), Kernel.Sm_Release(SemId));
 
 		// Signaling Consumer
-		CheckError(F("Producer"), Kernel.iEv_Send(TidConsumer, Event));
+		CheckError(F("Producer"), Kernel.Ev_Send(TidConsumer, Event));
 	}
 
 }
@@ -378,7 +387,7 @@ void Monitor()
 			Serial.println((unsigned)eventout);
 			Serial.flush();
 
-			Kernel.iKn_FatalError();
+			Kernel.isrKn_FatalError();
 		}
 		else
 		{

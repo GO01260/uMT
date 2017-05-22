@@ -38,7 +38,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 
 #if uMT_USE_TIMERS==1
@@ -58,7 +58,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("================= TIMER test ================="));
 	Serial.flush();
@@ -97,7 +97,7 @@ static void Test_Tm_WakeupAfter()
 		Serial.print(F(" WakeupAfter(): => "));
 		Serial.print(counter);
 		Serial.print(F("  KernelTickCounter => "));
-		Serial.println(Kernel.iKn_GetKernelTick());
+		Serial.println(Kernel.isrKn_GetKernelTick());
 
 		Serial.print(F(" WakeupAfter(): Tm_WakeupAfter() - timeout = "));
 		Serial.println(TEST_TIMEOUT1);
@@ -137,7 +137,7 @@ static void Test_Tm_EvAfter()
 		Serial.print(F(" EvAfter(): => "));
 		Serial.print(counter);
 		Serial.print(F("  KernelTickCounter => "));
-		Serial.println(Kernel.iKn_GetKernelTick());
+		Serial.println(Kernel.isrKn_GetKernelTick());
 
 		Serial.print(F(" EvAfter(): Tm_EvAfter() - timeout = "));
 		Serial.println(TEST_TIMEOUT2);
@@ -173,7 +173,7 @@ static void Test_Tm_EvAfter()
 				Serial.println((unsigned)eventout);
 				Serial.flush();
 
-				Kernel.iKn_FatalError();
+				Kernel.isrKn_FatalError();
 			}
 			else
 			{
@@ -222,7 +222,7 @@ static void Test_Tm_EvEvery()
 		Serial.print(F(" EvEvery(): => "));
 		Serial.print(counter);
 		Serial.print(F("  KernelTickCounter => "));
-		Serial.println(Kernel.iKn_GetKernelTick());
+		Serial.println(Kernel.isrKn_GetKernelTick());
 
 
 		Event_t	eventout;
@@ -245,7 +245,7 @@ static void Test_Tm_EvEvery()
 				Serial.println((unsigned)eventout);
 				Serial.flush();
 
-				Kernel.iKn_FatalError();
+				Kernel.isrKn_FatalError();
 			}
 			else
 			{
@@ -305,7 +305,7 @@ void LOOP()		// TASK TID=1
 		Serial.println((unsigned)error);
 		Serial.flush();
 
-		Kernel.iKn_FatalError();
+		Kernel.isrKn_FatalError();
 	}
 
 
@@ -316,7 +316,7 @@ void LOOP()		// TASK TID=1
 		Serial.println((unsigned)error);
 		Serial.flush();
 
-		Kernel.iKn_FatalError();
+		Kernel.isrKn_FatalError();
 	}
 
 	Serial.print(F(" LOOP(): Active TASKS = "));

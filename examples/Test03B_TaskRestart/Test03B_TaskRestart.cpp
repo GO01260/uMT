@@ -38,7 +38,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 #if uMT_USE_RESTARTTASK==1
 
@@ -56,7 +56,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(uMT::Kn_GetFreeSRAM());
+	Serial.println(uMT::Kn_GetFreeRAM());
 
 	Serial.println(F("================= TASK Delete test ================="));
 	Serial.flush();
@@ -167,7 +167,7 @@ void LOOP()		// TASK TID=1
 	Serial.println(F("=================================="));
 	Serial.flush();
 
-	Kernel.iKn_Reboot();
+	Kernel.isrKn_Reboot();
 }
 
 #endif

@@ -38,7 +38,7 @@
 #endif
 
 
-#include "uMT.h"
+#include <uMT.h>
 
 #include <Arduino.h>
 
@@ -55,7 +55,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("================= RoundRobin test ================="));
 	Serial.flush();
@@ -89,7 +89,7 @@ void LOOP()		// TASK TID=1
 		Serial.print(F(" Task1(): => "));
 		Serial.print(counter);
 		Serial.print(F("  KernelTickCounter => "));
-		Serial.println(Kernel.iKn_GetKernelTick());
+		Serial.println(Kernel.isrKn_GetKernelTick());
 
 		Serial.println(F(" Task1(): Tk_Yield()"));
 		Serial.flush();

@@ -38,7 +38,7 @@
 
 #include <Arduino.h>
 
-#include "uMT.h"
+#include <uMT.h>
 
 
 #if uMT_USE_SEMAPHORES==1
@@ -63,7 +63,7 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeSRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("MySetup(): => Kernel.Kn_Start()"));
 	Serial.flush();
@@ -84,17 +84,17 @@ static void Task2()
 	Serial.println(myTid);
 	Serial.flush();
 
-	Timer_t OldSysTick = Kernel.iKn_GetKernelTick();
+	Timer_t OldSysTick = Kernel.isrKn_GetKernelTick();
 	Timer_t OldSMillis = millis();
 
 	while (1)
 	{
-		Serial.println(F("  Task2(): iSm_Release(SEM_ID_01)"));
+		Serial.println(F("  Task2(): Sm_Release(SEM_ID_01)"));
 		Serial.flush();
 
 		Kernel.Sm_Release(SEM_ID_01);
 
-		Timer_t NowSysTick = Kernel.iKn_GetKernelTick();
+		Timer_t NowSysTick = Kernel.isrKn_GetKernelTick();
 		Timer_t DeltaSysTick = (NowSysTick - OldSysTick) * 1000 / uMT_TICKS_SECONDS;	// in milliseconds
 		OldSysTick = NowSysTick;
 
@@ -210,11 +210,11 @@ void LOOP()		// TASK TID=1
 		Serial.print(F("): => "));
 		Serial.print(++counter);
 		Serial.print(F("  KernelTickCounter => "));
-		Serial.println(Kernel.iKn_GetKernelTick());
+		Serial.println(Kernel.isrKn_GetKernelTick());
 
 		Serial.print(F(" Task1("));
 		Serial.print(millis());
-		Serial.println(F("): iSm_Release(SEM_ID_02)"));
+		Serial.println(F("): Sm_Release(SEM_ID_02)"));
 		Serial.flush();
 
 		Kernel.Sm_Release(SEM_ID_02);

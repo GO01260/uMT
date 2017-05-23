@@ -10,7 +10,7 @@ This is an initial version of uMT and, as such, no extensive testing has been pe
 
 The current version runs, full functionalities, on the Arduino UNO and MEGA2560 and, with reduced functionalities, on Arduino DUE.
 
-Please note that this an EDUCATIONAL tool, not designed for industrial or state-of-the-art application (nor life or mission critial application!!!) and not fully optimized.
+Please note that this an EDUCATIONAL tool, not designed for industrial or state-of-the-art application (nor life or mission critical application!!!) and not fully optimized.
 
 Bugs, questions and suggestions can be sent to the author at "go01260@alice.it"
 

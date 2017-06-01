@@ -34,9 +34,14 @@
 
 
 
-#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD)
-
 #if defined(ARDUINO_ARCH_SAM) 
+
+///////////////////////////////////////////////////////////////////////////////////
+//
+// This file contains CPU dependendent routines (Stack and ask Switches, Interrupts disabling/enabling, ...
+// 
+///////////////////////////////////////////////////////////////////////////////////
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PUSH stores registers on the stack in order of decreasing the register numbers, with the highest numbered
@@ -46,68 +51,162 @@
 // using the lowest memory address and the highest numbered register using the highest memory address.
 //
 // LR is register #14
+//
+// The saved/restored STACK frame is emulating the EXCEPTION processing + additional registers.
+//
+/////////////////////////////////////////////////////////
+//	STACK after HARDWARE EXCEPTION (HW_EXCP) - 8 registers
+//
+//	TOP:	PSR
+//			saved PC	== LR when NOT ISR
+//			LR
+//			R12
+//			R3
+//			R2
+//			R1
+//	SP:		R0
+//
+/////////////////////////////////////////////////////////
+//	Addtional registers saved (9 registers)
+//
+//	TOP:	LR		(SAM_EXCEPTION_LR value, always)
+//			R11
+//			R10
+//			R09
+//			R08
+//			R07
+//			R06
+//			R05
+//	SP:		R04
+//
+/////////////////////////////////////////////////////////
+//
+// The initial EXC_RETURN is the bitmask value 0xFFFFFFF9 refecting the fact that we do
+// not implement a separate stack pointer register for "system" and "user" mode (c.f. SAM3X8E
+// datasheet section 16.6.7.6 page 86).
+//
+// The initial PSR must (PSR) 0x01000000
+//
+// SAM_EXCEPTION_LR = b1001 (0x9) = 
+//		Return to Thread mode.
+//		Exception return gets state from MSP.
+//		Execution uses MSP after return.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// It saves all the General Purposes registers (13) on the STACK, plus the LR register (14 registers total)
-#define iMT_ISR_Entry()	asm volatile ("push   {r0-r12, lr};")
-
-// It restores all the General Purposes registers (13) from the STACK, plus the LR register (14 registers total),
-// renable INTS and thend jump back to the caller (in LR)
-#define iMT_ISR_Exit()	asm volatile ("pop   {r0-r12, lr};" "cpsie i;" "bx    lr;")
-
-#else		// ARDUINO_ARCH_SAMD: note this code NEVER tested!!!!!!
-
-#define iMT_ISR_Entry()	\
-	asm (						\
-	"mov   r12, sp;"			\
-#if defined(ARDUINO_ARCH_SAMD)	\
-	/* store low registers */	\
-	"stmia sp, {r0-r7};"		\
-	/* store high registers */	\
-	/* move them to low registers first. */	\
-	"mov   r1, r8;"				\
-	"mov   r2, r9;"				\
-	"mov   r3, r10;"			\
-	"mov   r4, r11;"			\
-	"mov   r5, r12;"			\
-	"mov   r6, lr;"				\
-	"stmia sp, {r1-r6};"		\
-	);
-#endif
 
 
+#define SAM_INITIAL_PSR		(0x01000000)
+#define SAM_EXCEPTION_LR	(0xFFFFFFF9)
+
+// Generate a "pendSVHook" exception
+#define GeneratePendSVHook_int()	SCB->ICSR |= SCB_ICSR_PENDSVSET_Msk
+
+#define EnableInterrupts() asm volatile ("cpsie i")
+#define DisableInterrupts() asm volatile ("cpsid i")
 
 
-///////////////////////////////////////////////////////////////////////////////////
-//
-// This file contains CPU dependendent routines (Stack and ask Switches, Interrupts disabling/enabling, ...
-// 
-///////////////////////////////////////////////////////////////////////////////////
-
-
-
-StackPtr_t __attribute__((noinline)) uMT::Kn_GetSP()
-{
-	asm volatile ("mov   r0, sp;");
-}
-
-
-
-#ifdef ZAPPED		// Alternative version
-static StackPtr_t __attribute__((noinline)) uMT::GetSP()
-{
-	register unsigned char * stack_ptr asm ("sp");
-
-	return(stack_ptr);
-}
-#endif
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Kernel PRIVATE STACK 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+static 	StackPtr_t KernelStack[uMT_KERNEL_STACK_SIZE];
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	NewTask - ARDUINO_UNO
+//	uMT::NewStackReschedule - ARDUINO_SAM
 //
-// Setup new Stack for this stack, ready to be restarted
+// Switch to private stack and call Reschedule();
+// Entered with INTS disabled!
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void __attribute__((noinline)) uMT::NewStackReschedule()
+{
+	static StackPtr_t	TaskStackBase = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE - 4];		// Load PRIVATE Kernel STACK
+
+	// Arduino DUE is using a 4 bytes aligned Stack, so new SP is...
+	TaskStackBase &= 0xFFFFFFFC;	// Align to 32 bits boundary.
+
+	register StackPtr_t stack_ptr asm ("sp");
+
+	stack_ptr = (StackPtr_t)TaskStackBase;		// Load PRIVATE Kernel STACK
+
+	// We are using Kernel Private STACK
+	KernelStackMode = TRUE;
+
+	// Call Reschedule
+	Reschedule();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::NewStackReborn - ARDUINO_SAM
+//
+// Switch to private stack and call Reborn();
+// Entered with INTS disabled!
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void __attribute__((noinline)) uMT::NewStackReborn()
+{
+	static StackPtr_t	TaskStackBase = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE - 4];		// Load PRIVATE Kernel STACK
+
+	// Arduino DUE is using a 4 bytes aligned Stack, so new SP is...
+	TaskStackBase &= 0xFFFFFFFC;	// Align to 32 bits boundary.
+
+	register StackPtr_t stack_ptr asm ("sp");
+
+	stack_ptr = (StackPtr_t)TaskStackBase;		// Load PRIVATE Kernel STACK
+
+	// We are using Kernel Private STACK
+	KernelStackMode = TRUE;
+
+	// Call Reborn
+	Kernel.Reborn();
+}
+
+
+#ifdef ZAPPED
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::NewStackReschedule - ARDUINO_UNO
+//
+// Switch to private stack and call Reschedule();
+// Entered with INTS disabled!
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void __attribute__((naked)) __attribute__ ((noinline))  uMT::Switch2PrivateStack()
+{
+	static StackPtr_t	TaskStackBase = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE];		// Load PRIVATE Kernel STACK
+
+	// Arduino DUE is using a 4 bytes aligned Stack, so new SP is...
+	TaskStackBase &= 0xFFFFFFFC;	// Align to 32 bits boundary.
+
+	// Save Old SP value
+	register StackPtr_t stack_ptr asm ("sp");
+
+	stack_ptr = (StackPtr_t)TaskStackBase;		// Load PRIVATE Kernel STACK
+
+	// And return to caller....
+	asm volatile ("bx	lr;");
+
+}
+#endif
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::Kn_GetSP - ARDUINO_SAM
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+StackPtr_t __attribute__((noinline)) uMT::Kn_GetSP()
+{
+	asm volatile ("mov r0, sp;");
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	NewTask - ARDUINO_SAM
+//
+//	Setup new Stack for this stack, ready to be restarted
 //
 //	TaskStack points to the first available, empty location
 //
@@ -119,25 +218,37 @@ StackPtr_t __attribute__ ((noinline)) uMT::NewTask(
 	void		(*BadExit)()
 	)
 {
-	// Stack is growing down...
+	// Stack is growing down... and SP points to the LAST used position
+
+	TaskStackBase += (StackSize);
+//	TaskStackBase += (StackSize - 4);
 
 	// Arduino DUE is using a 4 bytes aligned Stack, so new SP is...
-	TaskStackBase += (StackSize - 4);
-
 	TaskStackBase &= 0xFFFFFFFC;	// Align to 32 bits boundary.
 
 	uint32_t *StackPointer = (uint32_t *)TaskStackBase;
 
 
+	// Load Initial PSR
+	*--StackPointer = SAM_INITIAL_PSR;
+	
+	// Load Initial PC
+	*--StackPointer = (uint32_t)TaskStartAddr;
+
 	// Last return is BadExit()...
 	*--StackPointer = (uint32_t)BadExit;
 
-	// It will be loaded in LR register
-	*--StackPointer = (uint32_t)TaskStartAddr;
+	// Store registers r0-r3 + r12 in the stack
+	for (int a = 0; a < 5; a++)
+	{
+		*--StackPointer = 0;
+	}
 
+	// Load SAM_EXCEPTION_LR
+	*--StackPointer = SAM_EXCEPTION_LR;
 
-	// Store registers in the stack
-	for (int a = 0; a < 13; a++)
+	// Store registers r4-r11 in the stack
+	for (int a = 0; a < 8; a++)
 	{
 		*--StackPointer = 0;
 	}
@@ -146,46 +257,24 @@ StackPtr_t __attribute__ ((noinline)) uMT::NewTask(
 
 }
 
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//	doResumeTask
-//
-// This never returns!!!!!
-/////////////////////////////////////////////////////////////////////////////////////////////////
-static void __attribute__((naked)) __attribute__ ((noinline)) doResumeTask(StackPtr_t StackPtr)
-{
-	asm volatile ("mov   sp, r0;");		// Reload SP (StackPtr in register 0)
-
-	iMT_ISR_Exit();
-	
-	// The above will reload all the registers, including the SREG
-	//
-	// After resume, INTS enabled!!!!
-	//
-}
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //	ResumeTask
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void __attribute__ ((noinline)) uMT::ResumeTask(StackPtr_t StackPtr)
-// void  uMT::ResumeTask(StackPtr_t StackPtr)
+void __attribute__((naked)) __attribute__ ((noinline)) uMT::ResumeTask(StackPtr_t StackPtr)
 {
-	// Clear Timesharing, but only if we have done a task switch...
-	if (Running != LastRunning)
-	{
-		TimeSlice = (Running == IdleTaskPtr ? uMT_IDLE_TIMEOUTVALUE : uMT_TICKS_TIMESHARING);
-	}
+	asm volatile ("mov sp, r1;");		// Reload SP (StackPtr in register r1, r0 is class pointer)
 
-#if uMT_USE_TIMERS==1
-	// Clear Alarm expired, just in case
-	AlarmExpired = FALSE;
-#endif
+	// We are using application STACK
+	KernelStackMode = FALSE;
 
-	doResumeTask(StackPtr);
+	// Re-enable INTS in case not enabled!!!!
+	EnableInterrupts();
+
+	// Restore all the General Purposes registers (13) from the STACK, 
+	// plus the LR register (14 registers total) and thend jump back to the caller (in LR)
+	asm volatile ("pop   {r4-r11, lr};" "bx	lr;");
 }
 
 
@@ -193,98 +282,59 @@ void __attribute__ ((noinline)) uMT::ResumeTask(StackPtr_t StackPtr)
 //
 //	Suspend
 //
+// This is called from KENEL routine if a reschedule is needed
+// Usually entered with INTS ENABLED
 /////////////////////////////////////////////////////////////////////////////////////////////////
 void __attribute__ ((noinline)) uMT::Suspend()
 {
-	// Create a STACK like an ISR
-	iMT_ISR_Entry();
-	
-	register StackPtr_t stack_ptr asm ("sp");
-
-	Running->SavedSP = stack_ptr;	// Save Task's Stack Pointer
-
-	Suspend2();
-
-	// Never returns...
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//	Suspend2
-//
-// This is called both from Suspend() and from TimerTicks ISR routine if a reschedule is needed
-// 
-/////////////////////////////////////////////////////////////////////////////////////////////////
-void __attribute__ ((noinline)) uMT::Suspend2()
-{
-
-	// On entry:
-	// iMT_ISR_Entry performed
-	// SP saved
-
 	// Disable INTS
-	asm volatile ("cpsid i");
+	DisableInterrupts();
 
-	// Interrupts disabled
+	// Force a rescheduling at the next pendSVHook()
+	NeedResched = TRUE;
+	NoPreempt = FALSE;
 
-	NoResched = 1;		// Prevent further rescheduling.... until next 
+	// Enable INTS in case they are disabled
+	EnableInterrupts();
 
-	Reschedule();
+	// The following will trigger an INTERRUPT and a reschedule will occur
+	GeneratePendSVHook_int();
 
-	// Never returns...
+	// Returning to the caller only when this task is again the RUNNING task
 }
 
-		
+	
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_IntLock - ARDUINO_SAM
+//	isr_Kn_IntLock - ARDUINO_SAM
 //
 // It returns the status register & disables INTERRUPT (GLOBAL)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-CpuStatusReg_t uMT::isrKn_IntLock()
+CpuStatusReg_t uMT::isr_Kn_IntLock()
 {
 	// This function disables IRQ interrupts by setting the I-bit in the CPSR.
 	// It can only be executed in Privileged modes.
 	asm volatile ("mrs r0, PRIMASK; cpsid i");
-
-//	asm ("cpsid i");
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_IntUnlock - ARDUINO_SAM
+//	isr_Kn_IntUnlock - ARDUINO_SAM
 //
 // It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void uMT::isrKn_IntUnlock(CpuStatusReg_t Param)
+void uMT::isr_Kn_IntUnlock(CpuStatusReg_t Param)
 {
 	// This function enables IRQ interrupts by clearing the I-bit in the CPSR.
 	// It can only be executed in Privileged modes.
 	asm volatile ("msr PRIMASK, r0;");
-
-
-#ifdef ZAPPED
-	if (Param == 0)		// Re-enable interrupts
-	{
-		asm volatile ("cpsie i");
-	}
-#endif
 }
 
 
-
-
-#ifdef ZAPPED
-extern char _end;
-char *ramstart=(char *)0x20070000;
-char *ramend=(char *)0x20088000;
-#endif
-
-extern "C" char *sbrk(int i);
-
+extern int  _end ;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -293,10 +343,9 @@ extern "C" char *sbrk(int i);
 /////////////////////////////////////////////////////////////////////////////////////////////////
 StackPtr_t uMT::Kn_GetFreeRAM()
 {
- 	char *heapend=sbrk(0);
-	register uint32_t stack_ptr asm ("sp");		// variable PRIMASK is associated to sp
+	register uint32_t stack_ptr asm ("sp");		// variable stack_ptr is associated to sp
 	
-	return(stack_ptr - (uint32_t)heapend);
+	return(stack_ptr - (StackPtr_t)&_end);
 
 }
 
@@ -307,9 +356,7 @@ StackPtr_t uMT::Kn_GetFreeRAM()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 StackPtr_t uMT::Kn_GetFreeRAMend()
 {
-	char *heapend=sbrk(0);
-	
-	return(Kn_GetRAMend() - (uint32_t)heapend);
+	return(Kn_GetRAMend() - (StackPtr_t)&_end);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -319,7 +366,7 @@ StackPtr_t uMT::Kn_GetFreeRAMend()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 StackPtr_t uMT::Kn_GetSPbase()
 {
-	return((StackPtr_t)sbrk(0));
+	return((StackPtr_t)&_end);
 }
 
 
@@ -330,16 +377,13 @@ StackPtr_t uMT::Kn_GetSPbase()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 StackPtr_t uMT::Kn_GetRAMend()
 {
-#if defined(ARDUINO_ARCH_SAMD)
-	return((StackPtr_t)0x20088000);		?????? // Incorrect, only 32KB RAM
-#else
 	return((StackPtr_t)0x20088000);
-#endif
 }
 
 
 #if uMT_SAFERUN==1
 
+#ifdef ZAPPED
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //	ReadPRIMASK - ARDUINO_SAM
@@ -349,7 +393,7 @@ static uint32_t __attribute__ ((noinline)) ReadPRIMASK()
 {
 	asm volatile ("mrs r0, PRIMASK");
 }
-
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -358,8 +402,14 @@ static uint32_t __attribute__ ((noinline)) ReadPRIMASK()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 void __attribute__ ((noinline)) uMT::CheckInterrupts(const __FlashStringHelper *String)
 {
-
+#ifdef ZAPPED
 	uint32_t oldSREG = ReadPRIMASK();
+#else
+	// R0 == THIS
+	// R1 == String
+	register uint32_t oldSREG asm ("r2");		// variable oldSREG is associated to r2
+	asm volatile ("mrs r2, PRIMASK");
+#endif
 
 #define Global_Interrupt_Enable	0x00000001
 
@@ -372,44 +422,10 @@ void __attribute__ ((noinline)) uMT::CheckInterrupts(const __FlashStringHelper *
 		Serial.println(F(String));
 		Serial.flush();
 
-		isrKn_FatalError();
+		isr_Kn_FatalError();
 	}
 }
 
-#endif
-
-#ifdef ZAPPED
-volatile uint8_t SR_reg;               /* Current value of the FAULTMASK register */
-volatile uint8_t SR_lock = 0x00U;      /* Lock */
- 
-/* Save status register and disable interrupts */
-#define EnterCritical() \
-  do {\
-    if (++SR_lock == 1u) {\
-      /*lint -save  -e586 -e950 Disable MISRA rule (2.1,1.1) checking. */\
-      asm ( \
-      "MRS R0, PRIMASK\n\t" \
-      "CPSID i\n\t"            \
-      "STRB R0, %[output]"  \
-      : [output] "=m" (SR_reg)\
-      :: "r0");\
-      /*lint -restore Enable MISRA rule (2.1,1.1) checking. */\
-  }\
-} while(0)
- 
-/* Restore status register  */
-#define ExitCritical() \
-  do {\
-    if (--SR_lock == 0u) { \
-      /*lint -save  -e586 -e950 Disable MISRA rule (2.1,1.1) checking. */\
-      asm (                 \
-      "ldrb r0, %[input]\n\t"\
-      "msr PRIMASK,r0;\n\t" \
-      ::[input] "m" (SR_reg)  \
-      : "r0");                \
-      /*lint -restore Enable MISRA rule (2.1,1.1) checking. */\
-    }\
-  } while(0)
 #endif
 
 

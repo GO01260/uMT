@@ -42,22 +42,73 @@
 // 
 ///////////////////////////////////////////////////////////////////////////////////
 
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+// Kernel PRIVATE STACK 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+#if uMT_USE_RESTARTTASK==1			// Not for ARDUINO UNO
+static 	StackPtr_t KernelStack[uMT_KERNEL_STACK_SIZE];
+#endif
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::NewStackReschedule - ARDUINO_UNO
+//
+// Switch to private stack and call Reschedule();
+// Entered with INTS disabled!
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void __attribute__((noinline)) uMT::NewStackReschedule()
+{
+#if uMT_USE_RESTARTTASK==1			// Not for ARDUINO UNO
+	SP = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE - 1];		// Load PRIVATE Kernel STACK
+
+	// We are using application STACK
+	KernelStackMode = FALSE;
+#endif
+
+	// Call Reschedule
+	Reschedule();
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::NewStackReborn - ARDUINO_UNO
+//
+// Switch to private stack and call Reborn();
+// Entered with INTS disabled!
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+void __attribute__((noinline)) uMT::NewStackReborn()
+{
+#if uMT_USE_RESTARTTASK==1			// Not for ARDUINO UNO
+	SP = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE - 1];		// Load PRIVATE Kernel STACK
+
+	// We are using application STACK
+	KernelStackMode = FALSE;
+#endif
+
+	// Call Reborn
+	Reborn();
+}
+
 #ifdef ZAPPED
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	iMTSwitchStack - ARDUINO_UNO
+//	uMT::NewStackReschedule - ARDUINO_UNO
 //
-// We need to swith to a private, temporay stack for MT, usually when a task commit suicide...
-// MTConfig.MTStack points to the first available, empty location
+// Switch to private stack and call Reschedule();
+// Entered with INTS disabled!
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void __attribute__ ((noinline)) uMT::SwitchStack()
+void __attribute__((noinline)) uMT::Switch2PrivateStack()
 {
-
 	static uint8_t *StackPtr;
-	static uint8_t *newStack = MTStack;
+#if uMT_USE_RESTARTTASK==1			// Not for ARDUINO UNO
 
-	cli();	// Disable interrupts
+	static uint8_t *newStack = (uint8_t *)&KernelStack[uMT_KERNEL_STACK_SIZE - 1];
 
 	// Save Old SP value
 	StackPtr =  (uint8_t *)(SP);
@@ -66,18 +117,14 @@ void __attribute__ ((noinline)) uMT::SwitchStack()
 	*newStack-- = StackPtr[2];
 	*newStack-- = StackPtr[1];
 #if defined(__AVR_ATmega2560__)
-	*TaskStack-- = 0;
+	*newStack-- = 0;
 #endif
-	// Create a new Stack
-	SP = newStack;
 
-	sei(); // Renable interrupts
-
+	SP = (StackPtr_t)newStack;		// Load PRIVATE Kernel STACK
+#endif
+	// And return to caller....
 }
 #endif
-
-
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -137,20 +184,12 @@ void __attribute__ ((noinline)) uMT::ResumeTask(StackPtr_t StackPtr)
 {
 	static StackPtr_t	_StackPtr;
 
-	// Clear Timesharing, but only if we have done a task switch...
-	if (Running != LastRunning)
-	{
-		TimeSlice = (Running == IdleTaskPtr ? uMT_IDLE_TIMEOUTVALUE : uMT_TICKS_TIMESHARING);
-	}
-
-#if uMT_USE_TIMERS==1
-	// Clear Alarm expired, just in case
-	AlarmExpired = FALSE;
-#endif
-
 	_StackPtr = StackPtr;		// Save it in a NOT Stack Pointer dependent location
 
 	cli();		/* No interrupts now! */
+
+	// We are using application STACK
+	KernelStackMode = FALSE;
 
 	// Set the new Stack Pointer
 	SP = _StackPtr;
@@ -168,6 +207,7 @@ void __attribute__ ((noinline)) uMT::ResumeTask(StackPtr_t StackPtr)
 //
 //	Suspend
 //
+// Usually entered with INTS ENABLED
 /////////////////////////////////////////////////////////////////////////////////////////////////
 void __attribute__ ((noinline)) uMT::Suspend()
 {
@@ -182,62 +222,42 @@ void __attribute__ ((noinline)) uMT::Suspend()
 
 	Running->SavedSP = SP;	// Save Task's Stack Pointer
 
-	Suspend2();
-
-	// Never returns...
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-//
-//	Suspend2
-//
-// This is called both from Suspend() and from TimerTicks ISR routine if a reschedule is needed
-// 
-/////////////////////////////////////////////////////////////////////////////////////////////////
-void __attribute__ ((noinline)) uMT::Suspend2()
-{
-
-	// On entry:
-	// iMT_ISR_Entry performed
-	// SP saved
-	// Interrupts disabled
-
-	NoResched = 1;		// Prevent further rescheduling.... until next 
+	NoPreempt = TRUE;		// Prevent further rescheduling.... until next 
 
 	Reschedule();
 
+
 	// Never returns...
 }
 
-		
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_IntLock - ARDUINO_UNO/MEGA
+//	isr_Kn_IntLock - ARDUINO_UNO/MEGA
 //
 // It returns the status register & disables INTERRUPT (GLOBAL)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-CpuStatusReg_t uMT::isrKn_IntLock()
+CpuStatusReg_t uMT::isr_Kn_IntLock()
 {
 	uint8_t oldSREG = SREG;
 
 	cli();		/* No interrupts now! */
 
 
-//	CheckInterrupts(F("isrKn_IntLock"));
+//	CheckInterrupts(F("isr_Kn_IntLock"));
 
 	return((CpuStatusReg_t)oldSREG);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_IntUnlock - ARDUINO_UNO/MEGA
+//	isr_Kn_IntUnlock - ARDUINO_UNO/MEGA
 //
 // It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void uMT::isrKn_IntUnlock(CpuStatusReg_t Param)
+void uMT::isr_Kn_IntUnlock(CpuStatusReg_t Param)
 {
 
 //	sei();
@@ -341,7 +361,7 @@ void uMT::CheckInterrupts(const __FlashStringHelper *String)
 		Serial.println(String);
 		Serial.flush();
 
-		isrKn_FatalError();
+		isr_Kn_FatalError();
 	}
 }
 

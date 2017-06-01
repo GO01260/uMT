@@ -72,12 +72,13 @@ void	uMT::ReadyTask(uTask *pTask)
 //
 //	uMT::Check4Preemption
 //
-// Make a task READY and insert in the READY queue
+// Set NeedResched and return it.
 //
-// Entered with INTS disabled
+// This routine can also be called from ISR, so AllowPreemption controls if a real preemption can be done.
 //
+// It must be entered with INTS disabled
 ////////////////////////////////////////////////////////////////////////////////////
-void	uMT::Check4Preemption(Bool_t AllowPreemption)
+void	uMT::Check4Preemption()
 {
 	CHECK_INTS("Check4Preemption");		// Verify if INTS are disabled...
 
@@ -87,16 +88,11 @@ void	uMT::Check4Preemption(Bool_t AllowPreemption)
 	{
 		/* If running task has lower priority than this
 		   task and can be preempted, force a rescheduling */
-		if (AllowPreemption)	
-			Suspend();	 	/* ...and suspend us */
-		else	/* Rescheduling prevented */
-			NeedResched = TRUE; /* Set attention flag */
+		NeedResched = TRUE; /* Set attention flag */
 	}
-
-	/* Note: Resched() will put the running task on the ready list! */
-
 }
 
+#if LEGACY_CRIT_REGIONS==1
 ////////////////////////////////////////////////////////////////////////////////////
 //
 //	uMT::ReadyTaskLocked
@@ -108,18 +104,20 @@ void	uMT::Check4Preemption(Bool_t AllowPreemption)
 ////////////////////////////////////////////////////////////////////////////////////
 void	uMT::ReadyTaskLocked(uTask *pTask)
 {
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
+	CpuStatusReg_t	CpuFlags = isr_Kn_IntLock();
 
 	ReadyTask(pTask);
 
-	isrKn_IntUnlock(CpuFlags);
+	isr_Kn_IntUnlock(CpuFlags);
 }
+#endif
 
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
 //	uMT::Tk_RemoveFromAnyQueue
 //
+// Enter with INTS disabled
 ////////////////////////////////////////////////////////////////////////////////////
 void  uMT::Tk_RemoveFromAnyQueue(uTask *pTask)
 {
@@ -134,6 +132,7 @@ void  uMT::Tk_RemoveFromAnyQueue(uTask *pTask)
 	{
 		// Remove from the Sem queue
 		pTask->pSemq->SemQueue.Remove(pTask);
+		pTask->pSemq = NULL;
 	}
 #endif
 

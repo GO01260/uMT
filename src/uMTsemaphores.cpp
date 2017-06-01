@@ -57,14 +57,17 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 	if (SemId_Check(Sid) == FALSE)
 		return(E_INVALID_SEMID);
 
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();	/* Enter critical region */
+	CpuStatusReg_t	CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	uMTsem *pSem = &SemList[Sid];
 
 	if (pSem->SemValue > 0) // Semaphore is free
 	{
 		pSem->SemValue--;		// Take the semaphore
-		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+
+		Running->pSemq = pSem;	// Remember the Queue
+
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 		return(E_SUCCESS);
 	}
@@ -75,7 +78,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 
 	if (Options == uMT_NOWAIT)
 	{
-		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 		return(E_WOULD_BLOCK);
 	}
@@ -116,6 +119,9 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 	}
 #endif
 
+
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
 	//////////////////////////////////////////////////////////
 	// Suspend task and generate a rescheduling.
 	// It will "return" only when this task is S_RUNNING again
@@ -136,12 +142,13 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 		is done to avoid a lucky task to enter sem in the time
 		the previous user has released it and this task will
 		be running */
+	
 
 #if uMT_USE_TIMERS==1
-	if (timeout != (Timer_t)0)		// A timer was set
-	{
-		isrKn_IntLock();	/* Reentering critical region, do NOT save FLAGS */
+	CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
+	if (timeout != (Timer_t)0)		// A timer was set?
+	{
 		DgbStringPrint("uMT(");
 		DgbValuePrint(TickCounter.Low);
 		DgbStringPrint("): Sm_Claim(myTid=");
@@ -159,7 +166,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 
 				DgbStringPrintLN("E_TIMEOUT");
 
-				isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+				isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 				return(E_TIMEOUT);	/* Return error if any */
 			}
@@ -183,17 +190,21 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 				DgbStringPrint("): Sm_Claim(): Timer Flag = 0x");
 				DgbValuePrint2LN(pTimer->Flags, HEX);
 
-				isrKn_FatalError(F("TimerQ_CancelTimer: Timer not found!"));
+				isr_Kn_FatalError(F("TimerQ_CancelTimer: Timer not found!"));
 			}
 		}
 	}
+
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
 #endif
 		
+	Running->pSemq = NULL;	// Not waiting in any SEM queue
 
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 }
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
@@ -213,8 +224,9 @@ Errno_t	uMT::doSm_Release(SemId_t Sid, Bool_t AllowPreemption)
 		return(E_OVERFLOW_SEM);
 	}
 
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();	/* Enter critical region */
+	CpuStatusReg_t	CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
+	// Do finally the sem release
 	uMTsem *pSem = &SemList[Sid];
 
 	// Any task waiting?
@@ -229,9 +241,7 @@ Errno_t	uMT::doSm_Release(SemId_t Sid, Bool_t AllowPreemption)
 		ReadyTask(pTask);
 
 		/* ... and check for preemption */
-		Check4Preemption(AllowPreemption);
-//		Check4Preemption(NoResched > 0 ? FALSE : TRUE);
-
+		Check4Preemption();
 	}
 	else
 	{
@@ -239,7 +249,10 @@ Errno_t	uMT::doSm_Release(SemId_t Sid, Bool_t AllowPreemption)
 		pSem->SemValue++;
 	}
 
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
+	if (AllowPreemption)
+		Check4NeedReschedule();		// Call Suspend() if NeedResched==TRUE
 
 	return(E_SUCCESS);
 }
@@ -263,9 +276,19 @@ Errno_t	uMT::Sm_SetQueueMode(SemId_t Sid, QueueMode_t Mode)
 	if (Mode != QUEUE_NOPRIO && Mode != QUEUE_PRIO)
 		return(E_INVALID_OPTION);
 
-	SemList[Sid].SemQueue.SetQueueMode(Mode); 
+	// This can only be done if queue is empty
+	if (SemList[Sid].SemQueue.Head == NULL)
+	{
+		SemList[Sid].SemQueue.SetQueueMode(Mode);
 
-	return(E_SUCCESS);
+		// Next Queue I/O will reshaffle the tsks' list...
+
+		return(E_SUCCESS);
+	}
+	else
+		return(E_NOT_ALLOWED);
+
+
 }
 
 #endif

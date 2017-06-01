@@ -27,7 +27,6 @@
 #ifndef uMT_DATATYPES_H
 #define uMT_DATATYPES_H
 
-
 #ifdef WIN32		// AVR look-alike
 
 typedef unsigned char	uint8_t;
@@ -44,8 +43,9 @@ typedef uint16_t		StackSize_t;		// 16 bits, system dependent. In MEGA the number
 typedef uint8_t			CpuStatusReg_t;		// 8 bits - Lock/Unlock
 typedef uint16_t		Param_t;			// 16 bits
 typedef uint16_t		SemValue_t;			// 16 bits
-#define uMT_MAX_SEM_VALUE	(0xffff)		// 16 bits value
 
+#define uMT_MAX_SEM_VALUE	(0xffff)		// 16 bits value
+#define uMT_ALL_EVENT_MASK	(0xffff)		// 16 bits value
 
 #else
 
@@ -55,37 +55,33 @@ typedef uint16_t		SemValue_t;			// 16 bits
 
 #if defined(ARDUINO_ARCH_AVR) // AVR-specific code
 
-//typedef uint16_t		SRAMsize_t;			// 16 bits
-
-//typedef	uint8_t			*StackPtr_t;		// Stack alignement
 typedef	uint16_t		StackPtr_t;			// Stack 
 typedef uint16_t		StackSize_t;		// 16 bits, system dependent. In MEGA the number of bits in an address is 22 but 16 seems to be sufficient
 typedef uint8_t			CpuStatusReg_t;		// 8 bits - Lock/Unlock
 typedef uint16_t		Param_t;			// 16 bits
 typedef uint16_t		SemValue_t;			// 16 bits
+
 #define uMT_MAX_SEM_VALUE	(0xffff)		// 16 bits value
+#define uMT_ALL_EVENT_MASK	(0xffff)		// 16 bits value
 
 
 #elif defined(ARDUINO_ARCH_SAM)  // SAM-specific code
 
-//typedef uint32_t		SRAMsize_t;			// 16 bits
-
-//typedef	uint8_t			*StackPtr_t;		// Stack alignement
 typedef	uint32_t		StackPtr_t;			// Stack 
 typedef uint32_t		StackSize_t;		// 32 bits, system dependent.
 typedef uint32_t		CpuStatusReg_t;		// 8 bits - Lock/Unlock
 typedef uint32_t		Param_t;			// 32 bits
 typedef uint32_t		SemValue_t;			// 32 bits
+
 #define uMT_MAX_SEM_VALUE	(0xffffffff)	// 32 bits value
+#define uMT_ALL_EVENT_MASK	(0xffffffff)	// 32 bits value
 
 
 #else
-  #error “This library only supports boards with AVR or SAM.”
+  #error “This library only supports boards with AVR or SAM processor.”
 #endif
 
 #endif
-
-
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -106,6 +102,8 @@ typedef uint8_t			Bool_t;				// 8 bits
 typedef uint32_t		Timer_t;			// 32 bits
 typedef uint8_t			TimerId_t;			// 8 bits
 typedef uint8_t			SemId_t;			// 8 bits, max 255
+typedef uint16_t		Cfg_data_t;		// Used in uMTcfg class
+
 
 #if uMT_MAX_EVENTS_NUM == 16
 typedef uint16_t		Event_t;			// 16 bits

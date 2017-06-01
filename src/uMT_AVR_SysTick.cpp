@@ -296,7 +296,6 @@ ISR(TIMER0_OVF_vect, ISR_NAKED)
 #endif
 
 
-
 ////////////////////////////////////////////////////////////////////////////////////
 //
 //	uMT_SystemTicks
@@ -318,7 +317,7 @@ inline void uMT_SystemTicks()
 	Kernel.TickCounter.Low = timer0_millis;		// Simply copy ticks counter...
 #endif
 
-	if (Kernel.BlinkingLED)
+	if (Kernel.kernelCfg.BlinkingLED)
 	{
 		if ((Kernel.TickCounter % uMT_TICKS_SECONDS) == 0)
 		{
@@ -339,10 +338,23 @@ inline void uMT_SystemTicks()
 	
 	if (uMTdoTicksWork() == 1)
 	{
-		Kernel.Running->SavedSP = SP;	// Save Task's Stack Pointer
+		cli();		/* No interrupts now! */
+
+		if (Kernel.KernelStackMode == FALSE)			// to support Restart()
+			Kernel.Running->SavedSP = SP;	// Save Task's Stack Pointer
 
 		// Suspend task and force a reschedule
-		Kernel.Suspend2();
+		// It will jump directly to the end of 
+		// "ISR(TIMER0_OVF_vect, ISR_NAKED)" rountine, AFTER "iMT_ISR_Exit();"
+
+		Kernel.NoPreempt = TRUE;		// Prevent further rescheduling.... until next one
+
+
+		// Switch to private stack and call Reschedule();
+		Kernel.NewStackReschedule();
+
+
+		// Never returns...
 	}
 }
 
@@ -366,14 +378,14 @@ void uMT::SetupSysTicks()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_Reboot - ARDUINO_UNO/MEGA
+//	isr_Kn_Reboot - ARDUINO_UNO/MEGA
 //
 // It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void	uMT::isrKn_Reboot()
+void	uMT::isr_Kn_Reboot()
 {
-	NoResched++;		// Prevent rescheduling....
+	NoPreempt = TRUE;		// Prevent further rescheduling.... until next one
 
 
 	cli();		// Disable interrupts

@@ -48,15 +48,11 @@ void uMT::BadExit()
 	Serial.println(F("================= uMT Kernel: BadExit() called! ================="));
 	Serial.flush();
 
-	Kernel.isrKn_FatalError();
+	Kernel.isr_Kn_FatalError();
 
 #ifdef ZAPPED
 	// Delete task
 	Kernel.Tk_DeleteTask(Kernel.Running->myTid);
-
-//	Kernel.Running->TaskStatus = S_ZOMBIE;
-
-//	Kernel.Reschedule();
 
 	// It never returns...
 #endif
@@ -65,43 +61,43 @@ void uMT::BadExit()
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_FatalError - ARDUINO
+//	isr_Kn_FatalError - ARDUINO
 //
 // It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void	uMT::isrKn_FatalError()
+void	uMT::isr_Kn_FatalError()
 {
 	NoPreempt = TRUE;		// Prevent rescheduling....
 
-	Serial.println(F("========= isrKn_FatalError ==========="));
+	Serial.println(F("========= isr_Kn_FatalError ==========="));
 	Serial.flush();
 
 	Kn_PrintInternals();
 
-	isrKn_Reboot();
+	isr_Kn_Reboot();
 
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
-//	isrKn_FatalError - ARDUINO
+//	isr_Kn_FatalError - ARDUINO
 //
 // It restore the previous status register (enabling INTERRUPTs (GLOBAL) if previously enabled)
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-void	uMT::isrKn_FatalError(const __FlashStringHelper *String)
+void	uMT::isr_Kn_FatalError(const __FlashStringHelper *String)
 {
 	NoPreempt = TRUE;		// Prevent rescheduling....
 
-	Serial.print(F("========= isrKn_FatalError ("));
+	Serial.print(F("========= isr_Kn_FatalError ("));
 	Serial.print(String);
 	Serial.println(F(")==========="));
 	Serial.flush();
 
 	Kn_PrintInternals();
 
-	isrKn_Reboot();
+	isr_Kn_Reboot();
 
 }
 
@@ -116,7 +112,7 @@ void uMT::IdleLoop()
 {
 	while (1)			// Do nothing....
 	{
-		if (Kernel.BlinkingLED)
+		if (Kernel.kernelCfg.IdleLED)
 		{
 			digitalWrite(LED_BUILTIN, HIGH);
 		}
@@ -136,12 +132,12 @@ void uMT::IdleLoop()
 
 		if (Kernel.ActiveTaskNo == 0)
 		{
-			Kernel.isrKn_FatalError(F("No active tasks in the system (all deleted?)"));
+			Kernel.isr_Kn_FatalError(F("No active tasks in the system (all deleted?)"));
 		}
 
 		if (Kernel.NeedResched)
 		{
-			// If there is any higher priority task wich needs to run, do it...
+			// If there is any higher priority task which needs to run, do it...
 			Kernel.Tk_Yield();
 		}
 
@@ -166,7 +162,7 @@ void uMT::CheckTaskMagic(uTask *task, const __FlashStringHelper *String)
 		Serial.println(String);
 		Serial.flush();
 
-		isrKn_FatalError();
+		isr_Kn_FatalError();
 	}
 
 	StackPtr_t MaxSP = (task->StackBaseAddr + task->StackSize - 1);
@@ -188,7 +184,7 @@ void uMT::CheckTaskMagic(uTask *task, const __FlashStringHelper *String)
 
 		Serial.flush();
 
-		isrKn_FatalError();
+		isr_Kn_FatalError();
 	}
 	
 
@@ -222,7 +218,7 @@ void uMT::CheckTimerMagic(uTimer *timer, const __FlashStringHelper *String)
 		Serial.println(String);
 		Serial.flush();
 
-		isrKn_FatalError();
+		isr_Kn_FatalError();
 	}
 }
 #endif
@@ -238,6 +234,12 @@ void uMT::CheckTimerMagic(uTimer *timer, const __FlashStringHelper *String)
 #define PRINT_MODE	HEX
 #else
 #define PRINT_MODE	DEC
+#endif
+
+#if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
+	extern char *__malloc_heap_end;
+	extern "C" char *sbrk(int i);
+	extern char *__brkval;
 #endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -261,13 +263,15 @@ Errno_t	uMT::Kn_PrintInternals()
 	Serial.print(ActiveTaskNo);
 
 	Serial.print(F(" TimeSharingEnabled="));
-	Serial.print(TimeSharingEnabled);
+	Serial.print(kernelCfg.TimeSharingEnabled);
 
 	Serial.print(F(" NoPreempt="));
 	Serial.print(NoPreempt);
 
+#if LEGACY_CRIT_REGIONS==1
 	Serial.print(F(" NoResched="));
 	Serial.print(NoResched);
+#endif
 
 	Serial.print(F(" NeedResched="));
 	Serial.print(NeedResched);
@@ -278,9 +282,12 @@ Errno_t	uMT::Kn_PrintInternals()
 	Serial.print(F(" TickCounter.Low="));
 	Serial.print(TickCounter.Low);
 
-	Serial.print(F(" FreeRAM_0(bytes)="));
-	Serial.print(FreeRAM_0);
-
+	Serial.print(F(" HEAP FreeRAM (bytes)="));
+#if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
+	Serial.print((size_t)(__malloc_heap_end - __brkval));
+#else
+	Serial.print(kernelCfg.FreeRAM_0);
+#endif
 	Serial.println(F(""));
 
 	uTask *pTask;
@@ -288,7 +295,7 @@ Errno_t	uMT::Kn_PrintInternals()
 	// Print all tasks
 	Serial.println(F("=========== RAW TASK LIST =================="));
 
-	for (int idx = 0; idx < uMT_MAX_TASK_NUM; idx++)
+	for (int idx = 0; idx < kernelCfg.Tasks_Num; idx++)
 	{
 		pTask = &TaskList[idx];
 
@@ -365,7 +372,7 @@ Errno_t	uMT::Kn_PrintInternals()
 //	Serial.println(F("=========== SemQueue =================="));
 
 
-	for (int idx = 0; idx < uMT_MAX_SEM_NUM; idx++)
+	for (int idx = 0; idx < kernelCfg.Semaphores_Num; idx++)
 	{
 		pTask = SemList[idx].SemQueue.Head;
 
@@ -484,33 +491,43 @@ Errno_t	uMT::Kn_PrintConfiguration(uMTcfg &Cfg)
 	Serial.println(F("=========== KERNEL CONFIGURATION PRINT start =================="));
 
 
-	Serial.print(F("Use_Events        : "));
-	Serial.println((Cfg.Use_Events ? F("YES") : F("NO")));
-	Serial.print(F("Use_Semaphores    : "));
-	Serial.println((Cfg.Use_Semaphores ? F("YES") : F("NO")));
-	Serial.print(F("Use_Timers        : "));
-	Serial.println((Cfg.Use_Timers ? F("YES") : F("NO")));
-	Serial.print(F("Use_RestartTask   : "));
-	Serial.println((Cfg.Use_RestartTask ? F("YES") : F("NO")));
-	Serial.print(F("Use_PrintInternals: "));
-	Serial.println((Cfg.Use_PrintInternals ? F("YES") : F("NO")));
+	Serial.print(F("Use_Events         : "));
+	Serial.println((Cfg.ro.Use_Events ? F("YES") : F("NO")));
+	Serial.print(F("Use_Semaphores     : "));
+	Serial.println((Cfg.ro.Use_Semaphores ? F("YES") : F("NO")));
+	Serial.print(F("Use_Timers         : "));
+	Serial.println((Cfg.ro.Use_Timers ? F("YES") : F("NO")));
+	Serial.print(F("Use_RestartTask    : "));
+	Serial.println((Cfg.ro.Use_RestartTask ? F("YES") : F("NO")));
+	Serial.print(F("Use_PrintInternals : "));
+	Serial.println((Cfg.ro.Use_PrintInternals ? F("YES") : F("NO")));
 
+	Serial.print(F("Events_Num         : "));
+	Serial.println(Cfg.ro.Events_Num);
 
-	Serial.print(F("Max_Tasks         : "));
-	Serial.println(Cfg.Max_Tasks);
-	Serial.print(F("Max_Semaphores    : "));
-	Serial.println(Cfg.Max_Semaphores);
-	Serial.print(F("Max_Events        : "));
-	Serial.println(Cfg.Max_Events);
-	Serial.print(F("Max_AgentTimers   : "));
-	Serial.println(Cfg.Max_AgentTimers);
-	Serial.print(F("Max_AppTasks_Stack: "));
-	Serial.println(Cfg.Max_AppTasks_Stack);
-	Serial.print(F("Max_Task1_Stack   : "));
-	Serial.println(Cfg.Max_Task1_Stack);
-	Serial.print(F("Max_Idle_Stack    : "));
-	Serial.println(Cfg.Max_Idle_Stack);
+	Serial.print(F("Tasks_Num          : "));
+	Serial.println(Cfg.rw.Tasks_Num);
+	Serial.print(F("Semaphores_Num     : "));
+	Serial.println(Cfg.rw.Semaphores_Num);
+	Serial.print(F("Events_Num         : "));
+	Serial.println(Cfg.ro.Events_Num);
+	Serial.print(F("AgentTimers_Num    : "));
+	Serial.println(Cfg.rw.AgentTimers_Num);
+	Serial.print(F("AppTasks_Stack_Size: "));
+	Serial.println(Cfg.rw.AppTasks_Stack_Size);
+	Serial.print(F("Max_Task1_Stack    : "));
+	Serial.println(Cfg.rw.Task1_Stack_Size);
+	Serial.print(F("Idle_Stack_Size    : "));
+	Serial.println(Cfg.rw.Idle_Stack_Size);
 
+	Serial.print(F("FreeRAM_0          : "));
+	Serial.println(Cfg.rw.FreeRAM_0);
+	Serial.print(F("BlinkingLED        : "));
+	Serial.println(Cfg.rw.BlinkingLED);
+	Serial.print(F("IdleLED            : "));
+	Serial.println(Cfg.rw.IdleLED);
+	Serial.print(F("TimeSharingEnable  : "));
+	Serial.println(Cfg.rw.TimeSharingEnabled);
 
 	Serial.println(F("=========== KERNEL CONFIGURATION PRINT end =================="));
 
@@ -628,9 +645,11 @@ unsigned uMTdoTicksWork()
 	if (Kernel.NoPreempt == TRUE)
 		return(0);		// NO
 
+#if LEGACY_CRIT_REGIONS==1
 	// Can we be rescheduled?
 	if (Kernel.NoResched != 0)
 		return(0);		// NO
+#endif
 
 #if uMT_USE_TIMERS==1
 	// Check if some ALARM is expired
@@ -650,7 +669,7 @@ unsigned uMTdoTicksWork()
 	}
 	else
 	{
-		if (Kernel.TimeSharingEnabled == TRUE)
+		if (Kernel.kernelCfg.TimeSharingEnabled == TRUE)
 		{
 			if (Kernel.TimeSlice <= 0)
 			{

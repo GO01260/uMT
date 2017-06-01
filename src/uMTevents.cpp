@@ -44,6 +44,8 @@
 ////////////////////////////////////////////////////////////////////////////////////
 Bool_t uMT::EventVerified(uTask *pTask)
 {
+	CHECK_INTS("EventVerified");		// Verify if INTS are disabled...
+
 	Event_t result = pTask->EV_requested & pTask->EV_received;
 
 	if (((pTask->EV_condition & uMT_ANY) && (result != 0)) /* OR condition */
@@ -68,6 +70,8 @@ Bool_t uMT::EventVerified(uTask *pTask)
 ////////////////////////////////////////////////////////////////////////////////////
 void uMT::EventSend(uTask *pTask, Event_t Event)
 {
+	CHECK_INTS("EventSend");		// Verify if INTS are disabled...
+
 	/* Set event */
 	pTask->EV_received |= Event;
 
@@ -82,46 +86,12 @@ void uMT::EventSend(uTask *pTask, Event_t Event)
 			/* Make this task READY... */
 			ReadyTask(pTask);
 
-			// DO NOT CHECK FOR PREMPTION!!!!
-			// Chek4Preemption () will trigger a Suspend() and this cannot be done inside the rescheduling
+			// Do not trigger a Suspend(), this cannot be done inside the rescheduling
+			Check4Preemption();		
 		}
 	}
 
 }
-
-#ifdef ZAPPED
-////////////////////////////////////////////////////////////////////////////////////
-//
-//	uMT::Ev_Send
-//
-////////////////////////////////////////////////////////////////////////////////////
-Errno_t uMT::Ev_Send(TaskId_t Tid, Event_t Event)
-{
-	if (Inited == FALSE)
-		return(E_NOT_INITED);
-
-	if (Tid >= uMT_MAX_TASK_NUM)
-	{
-		DgbStringPrint("uMT: Ev_Send(): E_INVALID_TID => ");
-		DgbValuePrintLN(Tid);
-		return(E_INVALID_TASKID);
-	}
-
-	uTask *pTask = &TaskList[Tid];
-
-	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
-	
-	// Check for pending events
-	EventSend(pTask, Event);
-
-	/* ... and check for preemption */
-	Check4Preemption(TRUE);
-
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
-
-   return(E_SUCCESS);
-}
-#endif
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -134,7 +104,7 @@ Errno_t uMT::doEv_Send(TaskId_t Tid, Event_t Event, Bool_t AllowPreemption)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	if (Tid >= uMT_MAX_TASK_NUM)
+	if (Tid >= kernelCfg.Tasks_Num)
 	{
 		DgbStringPrint("uMT: Ev_Send(): E_INVALID_TID => ");
 		DgbValuePrintLN(Tid);
@@ -143,15 +113,15 @@ Errno_t uMT::doEv_Send(TaskId_t Tid, Event_t Event, Bool_t AllowPreemption)
 
 	uTask *pTask = &TaskList[Tid];
 
-	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
-	
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
+
 	// Check for pending events
 	EventSend(pTask, Event);
 
-	/* ... and check for preemption */
-	Check4Preemption(AllowPreemption);
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+	if (AllowPreemption)
+		Check4NeedReschedule();		// Call Suspend() if NeedResched==TRUE
 
    return(E_SUCCESS);
 }
@@ -182,7 +152,7 @@ Errno_t uMT::Ev_Receive(
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	if (eventin == 0)
 	{
@@ -190,7 +160,7 @@ Errno_t uMT::Ev_Receive(
 		if (eventout != NULL)
 			*eventout = Running->EV_received;
 
-		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 		return(E_SUCCESS);
 	}
@@ -211,7 +181,7 @@ Errno_t uMT::Ev_Receive(
 			if (eventout != NULL)
 				*eventout = Running->EV_received;
 		
-			isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+			isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 			DgbStringPrint("uMT: Ev_Receive(): flags = 0X");
 			DgbValuePrint(flags);
@@ -255,6 +225,8 @@ Errno_t uMT::Ev_Receive(
 		DgbValuePrint(TickCounter.Low);
 		DgbStringPrintLN("): Ev_Receive(): Suspend()...");
 
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
 		//////////////////////////////////////////////////////////
 		// Suspend task and generate a rescheduling.
 		// It will "return" only when this task is S_RUNNING again
@@ -271,7 +243,7 @@ Errno_t uMT::Ev_Receive(
 		 * INTERRUPTS are ENABLED!
 		 *******************************************************************/
 
-		isrKn_IntLock();	/* Reentering critical region, do NOT save FLAGS */
+		CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 #if uMT_USE_TIMERS==1
 		if (pTimer->Timeout != (Timer_t)0)		// A timer was set
@@ -298,7 +270,7 @@ Errno_t uMT::Ev_Receive(
 					DgbValuePrint(TickCounter.Low);
 					DgbStringPrintLN("): Ev_Receive(): returning E_TIMEOUT");
 
-					isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+					isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 					return(E_TIMEOUT);	/* Return error if any */
 				}
@@ -316,7 +288,7 @@ Errno_t uMT::Ev_Receive(
 					DgbStringPrint("): Ev_Receive(): Timer Flag = 0x");
 					DgbValuePrint2LN(pTimer->Flags, HEX);
 
-					isrKn_FatalError(F("TimerQ_CancelTimer: Timer not found!"));
+					isr_Kn_FatalError(F("TimerQ_CancelTimer: Timer not found!"));
 				}
 			}
 		}
@@ -339,7 +311,7 @@ Errno_t uMT::Ev_Receive(
 	DgbValuePrint(TickCounter.Low);
 	DgbStringPrintLN("): Ev_Receive(): returning E_SUCCESS");
 
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);	/* Return error if any */
 }

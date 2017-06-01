@@ -106,7 +106,7 @@ uTimer * uMT::TimerQ_Pop()
 	{
 		if (TotTimerQueued != 0)
 		{
-			isrKn_FatalError(F("TimerQ_Pop: TimerQueue != TotalQueued"));
+			isr_Kn_FatalError(F("TimerQ_Pop: TimerQueue != TotalQueued"));
 		}
 
 		return(NULL);
@@ -289,11 +289,11 @@ void uMT::TimerQ_PushFree(uTimer *pTimer)
 	if (pTimer->Flags & uMT_TM_IAM_AGENT)
 	{
 #if uMT_SAFERUN==1
-		if (pTimer->myTimerId < uMT_MAX_TASK_NUM)
+		if (pTimer->myTimerId < kernelCfg.Tasks_Num)
 		{
-			SerialPrintln(F("uMT: TimerQ_PushFree: trying to free an TASK Timer"));
+			SerialPrintln(F("uMT: TimerQ_PushFree: trying to free a TASK Timer"));
 
-			isrKn_FatalError();
+			isr_Kn_FatalError();
 
 		}
 #endif

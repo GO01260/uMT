@@ -72,7 +72,6 @@ void	uTask::Init(TaskId_t _myTid)
 	TaskStatus = S_UNUSED;
 	StackSize = 0;
 
-//	Prev = (uTask *)NULL;
 	Next = (uTask *)NULL;
 
 	myTid = _myTid;
@@ -96,20 +95,34 @@ void	uTask::Init(TaskId_t _myTid)
 //	uMT::Tk_CreateTask
 //
 ////////////////////////////////////////////////////////////////////////////////////
-Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddress_t _BadExit)
+Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddress_t _BadExit, StackSize_t _StackSize)
 {
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
+	if (_StackSize == 0)
+		_StackSize = kernelCfg.AppTasks_Stack_Size;	// Use default
+
+#if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
+
+	if (_StackSize < uMT_MIN_STACK_SIZE)
+	{
+		DgbStringPrintLN("uMT: Tk_CreateTask(): E_INVALID_STACK_SIZE");
+
+		return(E_INVALID_STACK_SIZE);
+	}
+
+#endif
+
 	if (_BadExit == NULL)
 		_BadExit = (FuncAddress_t)BadExit;
 
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	// Search for a empty task slot
 	if (UnusedQueue == NULL)
 	{
-		isrKn_IntUnlock(CpuFlags);
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 		DgbStringPrintLN("uMT: Tk_CreateTask(): E_NOMORE_TASKS");
 
@@ -118,10 +131,29 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 
 	// Pickup the first one free...
 	uTask *pTask = UnusedQueue;
-	UnusedQueue = UnusedQueue->Next;
 
 	// Clean up task
 	pTask->CleanUp();
+
+#if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
+
+	// Allocate task's STACK memory
+	pTask->StackBaseAddr = (StackPtr_t)malloc(_StackSize);
+
+	if (pTask->StackBaseAddr == NULL)
+	{
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
+		DgbStringPrintLN("uMT: Tk_CreateTask(): E_NO_MORE_MEMORY");
+
+		return(E_NO_MORE_MEMORY);
+	}
+
+	pTask->StackSize = _StackSize;
+
+#endif
+
+	UnusedQueue = UnusedQueue->Next;
 
 #if uMT_USE_RESTARTTASK==1
 	// Store start address
@@ -132,15 +164,13 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 	pTask->TaskStatus = S_CREATED;
 	pTask->Priority = PRIO_NORMAL;
 
-
 	pTask->SavedSP = NewTask(pTask->StackBaseAddr, pTask->StackSize, StartAddress, _BadExit);
-
 
 	Tid = pTask->myTid;
 
 	ActiveTaskNo++;		// one more...
 
-	isrKn_IntUnlock(CpuFlags);
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	CHECK_TASK_MAGIC(pTask, "Tk_CreateTask");
 
@@ -148,6 +178,25 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 }
 
 
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::doDeleteTask
+//
+////////////////////////////////////////////////////////////////////////////////////
+void	uMT::doDeleteTask(uTask *pTask)
+{
+	// Insert in the UNUSED queue
+	pTask->TaskStatus = S_UNUSED;
+	pTask->Next = UnusedQueue;
+	UnusedQueue = pTask;
+
+	ActiveTaskNo--;		// one less...
+
+#if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
+	// Release STACK memory
+	uMTfree((void *)pTask->StackBaseAddr);
+#endif
+}
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
@@ -161,37 +210,42 @@ Errno_t	uMT::Tk_DeleteTask(TaskId_t Tid)
 
 	CHECK_VALID_TASK(Tid);
 
+	if (Tid == uMT_ARDUINO_TASK_NUM)		// Arduino loop() cannot be deleted....
+		return(E_INVALID_TASKID);
+
+
 	uTask *pTask = &TaskList[Tid];
 
 	if (pTask->TaskStatus == S_UNUSED)
 		return(E_INVALID_TASKID);
 
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
-
-	ActiveTaskNo--;		// one less...
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	////////////////////////////////////////////
 	// Remove from any QUEUE
 	////////////////////////////////////////////
 	Tk_RemoveFromAnyQueue(pTask);
 
-
-	// Insert in the UNUSED queue
-	pTask->TaskStatus = S_UNUSED;
-	pTask->Next = UnusedQueue;
-	UnusedQueue = pTask;
-
 	if (Running == pTask)
 	{
 		// Suicide...
 
-		// With INTS disabled...
-		Reschedule();
+		pTask->TaskStatus = S_ZOMBIE;	// It will be deleted by Resched()
 
-		// It never returns!!!
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
+		Suspend();
+
+		// The following ONLY for the SAM architecture, just in case...
+		while (1)
+			;
+	}
+	else
+	{
+		doDeleteTask(pTask);
 	}
 
-	isrKn_IntUnlock(CpuFlags);
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 
@@ -221,7 +275,7 @@ Errno_t	uMT::Tk_StartTask(TaskId_t Tid)
 	}
 
 
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	/////////////////////////////////////////
 	// Insert in the ready queue
@@ -229,20 +283,120 @@ Errno_t	uMT::Tk_StartTask(TaskId_t Tid)
 	ReadyTask(pTask);
 
 	/* ... and check for preemption */
-	Check4Preemption(NoResched > 0 ? FALSE : TRUE);
+	Check4Preemption();
+
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	//
-	// Starting a task shall NOT trigger a RoundRobin unless the Started task has got hogher priority.
+	// Starting a task shall NOT trigger a RoundRobin unless the Started task has got higher priority.
 	// This will allow the calling task to complete all the initialization,
 	// including "Tk_StartTask" other tasks
 	//
-
-	isrKn_IntUnlock(CpuFlags);
+	Check4NeedReschedule();		// Call Suspend() if NeedResched==TRUE
 
 	return(E_SUCCESS);
 }
 
 #if uMT_USE_RESTARTTASK==1
+
+///////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::Reborn
+//
+// Entered with INTS disabled
+// Entered with PRIVATE Stack
+////////////////////////////////////////////////////////////////////////////////////
+void uMT::Reborn()
+{
+	uTask *pTask = Running;
+
+	// Sanity Ceck.... There is ALWAYS a RUNNING task
+	CHECK_TASK_MAGIC(Running, "Reborn(entry)");
+
+	// We cannot create a "fresh" stack before switching to a private Kernel stack...
+	pTask->SavedSP = NewTask(pTask->StackBaseAddr, pTask->StackSize, pTask->StartAddress, pTask->BadExit);
+
+	/////////////////////////////////////////
+	// Insert in the ready queue
+	/////////////////////////////////////////
+	ReadyTask(pTask);
+
+#ifndef WIN32
+
+//	Serial.println(F("Reborn()"));
+//	Serial.flush();
+
+#if defined(ARDUINO_ARCH_SAM)
+	// Call Suspend() + Reschedule()
+	Suspend();
+
+	while (1)
+		;
+	// It never returns!!!
+
+#elif defined(ARDUINO_ARCH_AVR)
+
+	NoPreempt = TRUE;		// Prevent further rescheduling.... until next 
+
+	Reschedule();
+
+	// It never returns!!!
+
+#else
+#error "Unsupported architecture!"
+#endif
+
+#endif		// WIN32
+
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::Tk_ReStartTask
+//
+////////////////////////////////////////////////////////////////////////////////////
+Errno_t	uMT::doReStartTask(uTask *pTask)
+{
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
+
+
+	////////////////////////////////////////////
+	// Remove from any QUEUE
+	////////////////////////////////////////////
+	Tk_RemoveFromAnyQueue(pTask);
+
+
+	///////////////////////////////////////////////
+	// Clean up task
+	///////////////////////////////////////////////
+	pTask->CleanUp();
+
+	///////////////////////////////////////////////
+	// Setup basic data again..
+	///////////////////////////////////////////////
+	pTask->TaskStatus = S_CREATED;
+//	pTask->Priority = PRIO_NORMAL;			// Priority is NOT reset.
+		
+	if (Running == pTask)
+	{
+		// Suicide...  
+			
+		NewStackReborn();
+
+		// It never returns!!!
+	}
+
+	pTask->SavedSP = NewTask(pTask->StackBaseAddr, pTask->StackSize, pTask->StartAddress, pTask->BadExit);
+
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
+	// Start another task (not the Running)
+	return(Tk_StartTask(pTask->myTid));		// Do a StartTask
+
+}
+
+
 ////////////////////////////////////////////////////////////////////////////////////
 //
 //	uMT::Tk_ReStartTask
@@ -255,6 +409,9 @@ Errno_t	uMT::Tk_ReStartTask(TaskId_t Tid)
 
 	CHECK_VALID_TASK(Tid);
 
+	if (Tid == uMT_ARDUINO_TASK_NUM)		// Cannot restart Arduino, missing StartAddress...
+		return(E_NOT_ALLOWED);
+	
 	uTask *pTask = &TaskList[Tid];
 
 	if (pTask->TaskStatus == S_UNUSED)
@@ -263,53 +420,7 @@ Errno_t	uMT::Tk_ReStartTask(TaskId_t Tid)
 	if (pTask->TaskStatus == S_CREATED)
 		return(Tk_StartTask(Tid));		// Do simply a StartTask...
 
-	if (Running == pTask)
-	{
-		// Suicide...  we cannot do it, we would need to set up a KERNEL private stack and this cannot be done at the moment...
-		return(E_NOT_ALLOWED);
-	}
-
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
-
-	////////////////////////////////////////////
-	// Remove from any QUEUE
-	////////////////////////////////////////////
-	Tk_RemoveFromAnyQueue(pTask);
-
-
-	// Clean up task
-	pTask->CleanUp();
-
-	///////////////////////////////////////////////
-	// Setup basic data again..
-	///////////////////////////////////////////////
-	pTask->TaskStatus = S_CREATED;
-//	pTask->Priority = PRIO_NORMAL;			// Priority is NOT reset.
-		
-	pTask->SavedSP = NewTask(pTask->StackBaseAddr, pTask->StackSize, pTask->StartAddress, pTask->BadExit);
-	
-#ifdef ZAPPED		// Cannot do it without a KERNEL private STACK
-	if (Running == pTask)
-	{
-		// Suicide...
-
-		// With INTS disabled...
-		Tk_StartTask(pTask->myTid);
-
-		Reschedule();
-
-		// It never returns!!!
-	}
-#endif
-
-
-
-	// Perform a StartTask
-	isrKn_IntUnlock(CpuFlags);
-
-	// Start another task (not the Running)
-	return(Tk_StartTask(pTask->myTid));		// Do a StartTask
-
+	return(doReStartTask(pTask));
 }
 #endif
 
@@ -327,6 +438,8 @@ Errno_t	uMT::Tk_SetParam(TaskId_t Tid, Param_t _parameter)
 
 	CHECK_VALID_TASK(Tid);
 
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
+
 	uTask *pTask = &TaskList[Tid];
 
 	if (pTask->TaskStatus != S_CREATED)
@@ -335,6 +448,8 @@ Errno_t	uMT::Tk_SetParam(TaskId_t Tid, Param_t _parameter)
 	}
 
 	pTask->Parameter = _parameter;
+
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 }
@@ -393,13 +508,12 @@ Errno_t	uMT::Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppri
 
 	uTask *pTask = &TaskList[Tid];
 
-
 	ppriority = pTask->Priority;
 
 	if (npriority == 0)	/* Return current priority */
 		return(E_SUCCESS);
 
-	CpuStatusReg_t	CpuFlags = isrKn_IntLock();
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	if (pTask == Running) 	/* Running task */
 	{
@@ -435,9 +549,11 @@ Errno_t	uMT::Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppri
 	}
 
 	/* ... and check for preemption */
-	Check4Preemption(TRUE);
+	Check4Preemption();
 
-	isrKn_IntUnlock(CpuFlags);
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
+
+	Check4NeedReschedule();		// Call Suspend() if NeedResched==TRUE
 
 	return(E_SUCCESS);
 }

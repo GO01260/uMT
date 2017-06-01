@@ -31,7 +31,7 @@
 // This macro check for VALID TASK ID and returns E_INVALID_TASKID if not valid
 // TASK 0 is the IDLE task
 ///////////////////////////////////////////////////////////////////////////////
-#define CHECK_VALID_TASK(Tid) { if (Tid == 0 || Tid >= uMT_MAX_TASK_NUM) return(E_INVALID_TASKID); }
+#define CHECK_VALID_TASK(Tid) { if (Tid == 0 || Tid >= kernelCfg.Tasks_Num) return(E_INVALID_TASKID); }
 
 
 
@@ -57,7 +57,6 @@ typedef uint8_t			TaskPrio_t;			// 8 bits, task priority 0-16
 //	INTERNAL configuration
 //
 ////////////////////////////////////////////////////////////////////////////////////
-#define uMT_MIN_TASK_NUM		4		// MIN task number (cannot be less than 4!!!)
 #define uMT_IDLE_TASK_NUM		0		// IDLE task number
 #define uMT_ARDUINO_TASK_NUM	1		// Arduino loop() task number
 #define uMT_MIN_FREE_TASK_LIST	2		// Free task list starts from....
@@ -84,11 +83,10 @@ enum Status_t
 /* 4 */	S_SBLOCKED,		// Task is blocked in then SEM queue
 /* 5 */	S_EBLOCKED,		// Task is blocked but NOT in any queue
 /* 6 */	S_TBLOCKED,		// Task is blocked in the TIMER queue
-/* 7 */	S_SUSPENDED		// Task is suspended, NOT in any queue; Next status is READY!
+/* 7 */	S_SUSPENDED,	// Task is suspended, NOT in any queue; Next status is READY!
+/* 8 */	S_ZOMBIE		// After entering in Tk_delete()!!!
 };
 
-// UNUSED
-//	S_ZOMBIE,		// After entering in BadExit()!!!
 //	S_IDLETASK,		// This is the IDLE task (it is managed in a special way)
 //	S_DORMANT,		// Task is dormant
 
@@ -105,9 +103,11 @@ class uTask
 
 	friend void KLL_TaskLoop();			// Test0_KernelLowLevel.cpp
 	friend void KLL_MainLoop();			// Test0_KernelLowLevel.cpp
-	friend unsigned uMTdoTicksWork();	// uMTarduinoSysTick.cpp
-	friend void uMT_SystemTicks();		// uMTarduinoSysTick.cpp
-	friend unsigned int sysTickHook();	// uMTarduinoSysTick.cpp
+
+	friend unsigned uMTdoTicksWork();	// uMTarduinoCommon.cpp
+
+	friend void uMT_SystemTicks();		// uMT_AVR_SysTick.cpp
+	friend void pendSVHook();			// uMT_SAM_SysTick.cpp
 
 private:
 

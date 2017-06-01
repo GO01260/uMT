@@ -47,7 +47,7 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	if (timeout != (Timer_t)0)
 	{
@@ -89,6 +89,9 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 
 	DgbStringPrintLN("uMT: Tm_WakeupAfter(): => Suspend()");
 
+
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region, technically NOT needed  */
+
 	//
 	// ...and suspend
 	//
@@ -100,7 +103,6 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 	// When returned, timeout is expired
 	// Interrupts already enabled!
 	
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region, technically NOT needed  */
 
 	return(E_SUCCESS);
 }
@@ -122,14 +124,14 @@ Errno_t uMT::Timer_EventTimout(Timer_t timeout, Event_t Event, TimerId_t &TmId, 
 	if (timeout == (Timer_t)0)
 		return(E_INVALID_TIMEOUT);
 
-	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	// Get a FREE TIMER
 	uTimer *pTimer = TimerQ_PopFree();
 
 	if (pTimer == NULL)
 	{
-		isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 		return(E_NOMORE_TIMERS);
 	}
 
@@ -161,7 +163,7 @@ Errno_t uMT::Timer_EventTimout(Timer_t timeout, Event_t Event, TimerId_t &TmId, 
 	// Insert in the TIMER queue
 	TimerQ_Insert(pTimer);
 
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(E_SUCCESS);
 }
@@ -205,11 +207,11 @@ Errno_t uMT::Tm_Cancel(TimerId_t TmId)
 		return(E_INVALID_TIMERID);
 
 
-	CpuStatusReg_t CpuFlags = isrKn_IntLock();	/* Enter critical region */
+	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
 	Errno_t errno = TimerQ_CancelTimer(Tmid2TimerPtr(TmId));
 
-	isrKn_IntUnlock(CpuFlags);	/* End of critical region */
+	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 
 	return(errno);
 }

@@ -36,15 +36,15 @@
 //
 // It can only be called from:
 //		Suspend()
-//		Suspend2()
-//		Tk_DeleteTask()
-//		BadExit()
+//		SysTick (or equivalent) 
 //
 // Reschedule() will RoundRobin the running task, if any
 //
-// It should be called with INTS disabled.
-
-// Only if eneterd with Running->TaskStatus == S_RUNNING, it will put the task in the ready queue
+// It MUST be called with INTS disabled.
+//
+// Stack Frame already saved and SP already stored in Running->SavedSP
+//
+// Only if entered with Running->TaskStatus == S_RUNNING, it will put the task in the ready queue
 // This routine NEVER RETURNS!
 //
 ////////////////////////////////////////////////////////////////////////////////////
@@ -55,19 +55,14 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 #endif
 {
 	// On entry:
-	// 1) Running still set to current task.
+	// 1) Running still set to current task, even if ZOMBIE
 	// 2) Running SP already saved
 
-	DgbStringPrintLN("uMT: Reschedule(): entry");
-	
-	
 	// Sanity Ceck.... There is ALWAYS a RUNNING task
 	CHECK_TASK_MAGIC(Running, "Reschedule(entry)");
 
 
 	CHECK_INTS("Reschedule");		// Verify if INTS are disabled...
-
-//	CpuStatusReg_t	CpuFlags = isrKn_IntLock();	// Just in case we made a previous mistake...
 
 	///////////////////////////////////////////////////////////////////////
 	////			NOW RUNNING WITH INTS DISABLED!!!!
@@ -89,6 +84,14 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 		ReadyTask(Running);
 	}
 
+
+	if (Running->TaskStatus == S_ZOMBIE)
+	{
+		//
+		// We were called from delete() in suicide mode
+		//
+		doDeleteTask(Running);
+	}
 
 	////////////////////////////////////////////////////////////////
 	// NOTE: Now THERE IS NO MORE RUNNING TASK!!!
@@ -154,8 +157,12 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 	///////////////////////////////////////////////////
 	//	Setup Globals variables
 	///////////////////////////////////////////////////
+#if LEGACY_CRIT_REGIONS==1
 	NoResched = 0;
+#endif
+
 	NeedResched = FALSE;
+	NoPreempt = FALSE;
 
 
 	///////////////////////////////////////////////////
@@ -171,9 +178,19 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 	DgbStringPrint("uMT: Reschedule(): => ResumeTask() - TID = ");
 	DgbValuePrintLN(Running->myTid);
 
+	// Clear Timesharing, but only if we have done a task switch...
+	if (Running != LastRunning)
+	{
+		TimeSlice = (Running == IdleTaskPtr ? uMT_IDLE_TIMEOUTVALUE : uMT_TICKS_TIMESHARING);
+	}
+
+#if uMT_USE_TIMERS==1
+	// Clear Alarm expired, just in case
+	AlarmExpired = FALSE;
+#endif
 
 	/* Now run task */
-	ResumeTask(Running->SavedSP);	// INTS enabled in ResumeTask()
+	ResumeTask(Running->SavedSP);	// INTS enabled in ResumeTask(), if needed
 
 	/* ... NEVER RETURNS!! */
 

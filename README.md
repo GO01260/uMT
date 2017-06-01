@@ -1,7 +1,7 @@
 # uMT
 uMT - a preemptive, soft real-time (not deterministic) multitasker for the ARDUINO AVR/SAM boards
 
-My name is Antonio Pastore (Torino, Italy) and I am dealing with real-time operating systems since late 80'. Recently I purchased an ARDUINO starter kit for my young son to let him understand in which area he wants to develop his professional carreer.
+My name is Antonio Pastore (Torino, Italy) and I am dealing with real-time operating systems since late 80'. Recently I purchased an Arduino starter kit for my young son to let him understand in which area he wants to develop his professional carreer.
 As a net effect, I got really fond of the environment and I replaced my useless evening in front of the TV with some Arduino programming. As a first "serious" project I decided to port a real-time kernel I developed almost 30 years ago for the Intel 8086 platform to Arduino. The task indeed proved to be a little bit too complex due to the very limited memory resources of the Arduino UNO board I was using. As a consequence I decided to rewrite it from scratch with the specific objective to make as tiny as possible to fit in the Arduino UNO board. I then purchased a Mega2560 in which uMT can nicely run thanks the 8KB RAM availability. Very recently I also purchased a Arduino Due (SAM based) board and I maneged to port this kernel also on this board (although it proved to be quite challenging...). An Arduino Zero (SAMD based) will likely to appear in the next future (I am missing the board...).
 
 

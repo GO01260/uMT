@@ -28,22 +28,21 @@
 #include "Test_Config.h"
 
 
-// This is done to force compilation (and error checking) even if test is not selected
-#if TEST_TIMESHARING==1
+#if TEST_EVENTS_TIMEOUT==1
 #define SETUP()	setup()
 #define LOOP()	loop()
 #else
-#define SETUP()	TIME_SHARING_setup()
-#define LOOP()	TIME_SHARING_loop()
+#define SETUP()	EVENTS_TIMEOUT_setup()
+#define LOOP()	EVENTS_TIMEOUT_loop()
 #endif
 
 #include <Arduino.h>
 
 #include <uMT.h>
 
-#define	SEM_ID_01		1		// Semaphore id
-#define	SEM_ID_02		2		// Semaphore id
+#if uMT_USE_EVENTS==1
 
+#if uMT_USE_TIMERS==1
 
 void SETUP() 
 {
@@ -56,15 +55,17 @@ void SETUP()
 	Serial.println(F("MySetup(): Initialising..."));
 	delay(100); //Allow for serial print to complete.
 
+
+	Serial.print(F("MySetup(): Free memory = "));
+	Serial.println(Kernel.Kn_GetFreeRAM());
+
+	Serial.println(F("================= Test08B_EventsTimers test ================="));
+
 	Serial.print(F("Compile Date&Time = "));
 	Serial.print(F(__DATE__));
 
 	Serial.print(F(" "));
 	Serial.println(F(__TIME__));
-
-
-	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeRAM());
 
 	Serial.println(F("MySetup(): => Kernel.Kn_Start()"));
 	Serial.flush();
@@ -73,6 +74,13 @@ void SETUP()
 
 }
 
+#define EVENT_A	0x0001
+#define EVENT_B	0x0002
+#define EVENT_C	0x0002
+
+#define TIMEOUT_A	1300		// NUmero primo
+#define TIMEOUT_B	1700		// NUmero primo
+#define TIMEOUT_C	1900		// NUmero primo
 
 static void Task2()
 {
@@ -90,6 +98,11 @@ static void Task2()
 
 	while (1)
 	{
+		Serial.println(F("  Task2(): Ev_Send(1, EVENT_A)"));
+		Serial.flush();
+
+		Kernel.Ev_Send(1, EVENT_A);
+
 		Timer_t NowSysTick = Kernel.isr_Kn_GetKernelTick();
 		Timer_t DeltaSysTick = (NowSysTick - OldSysTick) * 1000 / uMT_TICKS_SECONDS;	// in milliseconds
 		OldSysTick = NowSysTick;
@@ -109,10 +122,32 @@ static void Task2()
 
 		Serial.print(F("  Delta in millis() => "));
 		Serial.println(DeltaMillis);
+
+		Serial.println(F("  Task2(): iEv_Receive(EVENT_B, uMT_ANY)"));
 		Serial.flush();
 
-		delay(100);
+		Event_t	eventout;
+		Errno_t error = Kernel.Ev_Receive(EVENT_B, uMT_ANY, &eventout);
 
+		if (error != E_SUCCESS)
+		{
+			Serial.print(F("  Task2(): Ev_Receive() Failure! - returned "));
+			Serial.println((unsigned)error);
+			Serial.flush();
+
+			delay(5000);
+
+		}
+
+#ifdef USE_DELAY
+		Serial.println(F("  Task2(): delay(3000)"));
+		Serial.flush();
+		delay(3000);
+#else
+		Serial.println(F("  Task2(): Tm_WakeupAfter(3000)"));
+		Serial.flush();
+		Kernel.Tm_WakeupAfter(3000);
+#endif
 	}
 
 	
@@ -122,6 +157,7 @@ static void Task2()
 void LOOP()		// TASK TID=1
 {
 	int counter = 0;
+	Errno_t error;
 	TaskId_t Tid;
 
 	Serial.println(F(" Task1(): Kernel.Tk_CreateTask(Task1)"));
@@ -146,16 +182,63 @@ void LOOP()		// TASK TID=1
 
 	while (1)
 	{
-		Serial.print(F(" Task1(): => "));
-		Serial.print(++counter);
-		Serial.print(F("  millis() => "));
-		Serial.println(millis());
+		Serial.println(F(" Task1(): Ev_Receive(EVENT_A, uMT_ANY, timeout=1000)"));
 		Serial.flush();
 
-		delay(100);
+		Event_t	eventout = 0;
+		Timer_t timeout = 1000;	// Timeout 1 second (other task, 2 seconds)
+
+		while ( (error = Kernel.Ev_Receive(EVENT_A, uMT_ANY, &eventout, timeout)) != E_SUCCESS)
+		{
+			if (error == E_TIMEOUT)
+			{
+				// Timeout
+				Serial.println(F(" Task1(): Ev_Receive(): timeout!"));
+				Serial.flush();
+
+				timeout = (Timer_t)0;	// Clear timeout
+			}
+			else
+			{
+				Serial.print(F(" Task1(): Ev_Receive() Failure! - returned "));
+				Serial.println((unsigned)error);
+				Serial.flush();
+
+				delay(5000);
+
+			}
+		}
+
+
+		if (eventout != EVENT_A)
+		{
+			Serial.print(F(" Task1(): INVALID EVENT received = "));
+			Serial.println((unsigned)eventout);
+			Serial.flush();
+
+			Kernel.isr_Kn_FatalError();
+		}
+		else
+		{
+			Serial.print(F(" Task1(): => "));
+			Serial.print(++counter);
+			Serial.print(F("  KernelTickCounter => "));
+			Serial.println(Kernel.isr_Kn_GetKernelTick());
+			Serial.flush();
+		}
+
+
+		Serial.print(F(" Task1(): Ev_Send("));
+		Serial.print(Tid);
+		Serial.println(F(", EVENT_B)"));
+		Serial.flush();
+
+		Kernel.Ev_Send(Tid, EVENT_B);
 	}
   
 }
+#endif
+#endif
 
 
 ////////////////////// EOF

@@ -29,21 +29,18 @@
 
 
 // This is done to force compilation (and error checking) even if test is not selected
-#if TEST_TIMESHARING==1
+#if TEST_MALLOC==1
 #define SETUP()	setup()
 #define LOOP()	loop()
 #else
-#define SETUP()	TIME_SHARING_setup()
-#define LOOP()	TIME_SHARING_loop()
+#define SETUP()	MALLOC_setup()
+#define LOOP()	MALLOC_loop()
 #endif
 
+
+#include "uMT.h"
+
 #include <Arduino.h>
-
-#include <uMT.h>
-
-#define	SEM_ID_01		1		// Semaphore id
-#define	SEM_ID_02		2		// Semaphore id
-
 
 void SETUP() 
 {
@@ -56,105 +53,119 @@ void SETUP()
 	Serial.println(F("MySetup(): Initialising..."));
 	delay(100); //Allow for serial print to complete.
 
+
+	Serial.print(F("MySetup(): Free memory = "));
+	Serial.println(Kernel.Kn_GetFreeRAM());
+
+	Serial.println(F("================= MALLOC test ================="));
+	Serial.flush();
+
 	Serial.print(F("Compile Date&Time = "));
 	Serial.print(F(__DATE__));
 
 	Serial.print(F(" "));
 	Serial.println(F(__TIME__));
 
+	Serial.print(F("MySetup(): => sizeof(size_t)="));
+	Serial.println(sizeof(size_t));
+	Serial.flush();
 
-	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(Kernel.Kn_GetFreeRAM());
+	delay(2000);
 
 	Serial.println(F("MySetup(): => Kernel.Kn_Start()"));
 	Serial.flush();
 
-	Kernel.Kn_Start();
+
+	Kernel.Kn_Start(FALSE);		// No timesharing
 
 }
-
 
 static void Task2()
 {
-	int counter = 0;
+	unsigned counter = 0;
 	TaskId_t myTid;
 
 	Kernel.Tk_GetMyTid(myTid);
 
-	Serial.print(F("  Task2(): myTid = "));
+	Serial.print(F("** Task2(): myTid = "));
 	Serial.println(myTid);
 	Serial.flush();
-
-	Timer_t OldSysTick = Kernel.isr_Kn_GetKernelTick();
-	Timer_t OldSMillis = millis();
+	char *oldptr = NULL;
 
 	while (1)
 	{
-		Timer_t NowSysTick = Kernel.isr_Kn_GetKernelTick();
-		Timer_t DeltaSysTick = (NowSysTick - OldSysTick) * 1000 / uMT_TICKS_SECONDS;	// in milliseconds
-		OldSysTick = NowSysTick;
-
-		Timer_t NowMillis = millis();
-		Timer_t DeltaMillis = NowMillis - OldSMillis;
-		OldSMillis = NowMillis;
-
-		Serial.print(F("  Task2(): => "));
-		Serial.print(++counter);
-
-		Serial.print(F("  KernelTickCounter => "));
-		Serial.print(NowSysTick);
-
-		Serial.print(F(" - Delta in milliseconds => "));
-		Serial.print(DeltaSysTick);
-
-		Serial.print(F("  Delta in millis() => "));
-		Serial.println(DeltaMillis);
+		if (counter == 0)
+			counter = 1;
+		else
+			counter <<= 1;
+		Serial.print(F("** Task2(): malloc("));
+		Serial.print(counter);
+		Serial.println(F(")"));
 		Serial.flush();
 
-		delay(100);
+		char *ptr = (char *)malloc(counter);
 
+		Serial.print(F("** Task2(): malloc("));
+		Serial.print(counter);
+
+		if (ptr == NULL)
+		{
+			Serial.println(F("): malloc FAILURE!"));
+			Serial.flush();
+			delay(5000);
+		}
+		else
+		{
+			Serial.println(F("): malloc SUCCESS!"));
+			Serial.flush();
+			if (oldptr != NULL)
+				free(oldptr);
+		}
+
+		oldptr = ptr;
+
+		Serial.println(F("** Task2(): Yield(A)"));
+		Serial.println(F(""));
+		Serial.flush();
+
+		// Run other task
+		Kernel.Tk_Yield();
+
+		delay(500);
 	}
 
-	
 
 }
 
+
 void LOOP()		// TASK TID=1
 {
-	int counter = 0;
-	TaskId_t Tid;
+	TaskId_t Tid2;
 
-	Serial.println(F(" Task1(): Kernel.Tk_CreateTask(Task1)"));
+
+	Serial.println(F("Task1(): Kernel.Tk_CreateTask(Task2)"));
  
-	Kernel.Tk_CreateTask(Task2, Tid);
+	Kernel.Tk_CreateTask(Task2, Tid2);
 
-	Serial.print(F(" Task1(): Task2's Tid = "));
-	Serial.println(Tid);
+	Serial.print(F("Task1(): Task2's Tid = "));
+	Serial.println(Tid2);
 
-	Serial.println(F(" Task1(): StartTask(Task1)"));
+	Serial.println(F("Task1(): StartTask(Task2)"));
 	Serial.flush();
 
- 	Kernel.Tk_StartTask(Tid);
+ 	Kernel.Tk_StartTask(Tid2);
 
-	TaskId_t myTid;
-	
-	Kernel.Tk_GetMyTid(myTid);
-
-	Serial.print(F(" Task1(): myTid = "));
-	Serial.println(myTid);
-	Serial.flush();
 
 	while (1)
 	{
-		Serial.print(F(" Task1(): => "));
-		Serial.print(++counter);
-		Serial.print(F("  millis() => "));
-		Serial.println(millis());
+		Serial.println(F("Task1(): Yield(A)"));
+		Serial.println(F(""));
 		Serial.flush();
 
-		delay(100);
+		// Run other task
+		Kernel.Tk_Yield();
 	}
-  
+ 
 }
 
 

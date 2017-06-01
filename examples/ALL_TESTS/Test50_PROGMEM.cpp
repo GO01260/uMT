@@ -28,18 +28,19 @@
 #include "Test_Config.h"
 
 
-#if TEST_TASK_BADEXIT==1
+// This is done to force compilation (and error checking) even if test is not selected
+#if TEST_PROGMEM==1
 #define SETUP()	setup()
 #define LOOP()	loop()
 #else
-#define SETUP()	BAD_EXIT_setup()
-#define LOOP()	BAD_EXIT_loop()
+#define SETUP()	PROGMEM_setup()
+#define LOOP()	PROGMEM_loop()
 #endif
 
-#include <Arduino.h>
 
 #include <uMT.h>
 
+#include <Arduino.h>
 
 void SETUP() 
 {
@@ -54,87 +55,30 @@ void SETUP()
 
 
 	Serial.print(F("MySetup(): Free memory = "));
-	Serial.println(uMT::Kn_GetFreeRAM());
+	Serial.println(Kernel.Kn_GetFreeRAM());
 
-	Serial.println(F("================= TASK BAD EXIT test ================="));
+	Serial.println(F("================= RoundRobin test ================="));
 	Serial.flush();
 
 	Serial.println(F("MySetup(): => Kernel.Kn_Start()"));
 	Serial.flush();
 
-	Kernel.Kn_Start(FALSE);		// No Timesharing
+
+	Kernel.Kn_Start(FALSE);		// No timesharing
 
 }
-
-#define _LOOP_DEBUG	0
-
-#define LOOP_COUNT	100000L
-typedef long	Index_t;
-
-static void Task2()
-{
-	int counter = 0;
-	TaskId_t myTid;
-
-
-	Kernel.Tk_GetMyTid(myTid);
-
-	Serial.print(F("  Task2(): myTid = "));
-	Serial.println(myTid);
-	Serial.flush();
-
-	Serial.print(F("  Task2(): Active TASKS = "));
-	Serial.println(Kernel.Tk_GetActiveTaskNo());
-	Serial.flush();
-
-	Serial.println(F("  Task2(): Exiting..."));
-	Serial.println(F(""));
-	Serial.flush();
-
-}
-
 
 
 void LOOP()		// TASK TID=1
 {
-	TaskId_t Tid2;
-	TaskId_t Tid3;
 
+	Kernel.Kn_PrintInternals();
 
-	Serial.println(F(" Task1(): Kernel.Tk_CreateTask(Task2)"));
- 
-	Kernel.Tk_CreateTask(Task2, Tid2);
-
-	Serial.print(F(" Task1(): Task2's Tid = "));
-	Serial.println(Tid2);
-
-	
-	Serial.println(F(" Task1(): StartTask(Task2)"));
-	Serial.flush();
-
- 	Kernel.Tk_StartTask(Tid2);
-
-	Serial.println(F(" Task1(): Yield(A)"));
-	Serial.println(F(""));
-	Serial.flush();
-
-	// Run other task
-	Kernel.Tk_Yield();
-
-	delay(1000);
-
-	Serial.print(F(" Task1(C): Active TASKS = "));
-	Serial.println(Kernel.Tk_GetActiveTaskNo());
-	Serial.flush();
-
-	Serial.println(F(""));
-	Serial.println(F(" Task1(): Rebooting..."));
-	Serial.println(F("=================================="));
-	Serial.flush();
-
-	delay(3000);
-
-	Kernel.isr_Kn_Reboot();
+	while (1)
+	{
+		delay(1000);
+	}
+  
 }
 
 

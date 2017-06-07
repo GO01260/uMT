@@ -18,6 +18,7 @@
 #define TEST_EVENTS_TIMERS			0
 #define TEST_TIMERS1				0
 #define TEST_TIMERS2				0
+#define TEST_STACK_UTILIZATION		0
 
 #define TEST_COMPLEX_1				1
 #define TEST_COMPLEX_1HUGE			0

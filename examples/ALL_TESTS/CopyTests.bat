@@ -29,6 +29,8 @@ copy Test09_Timers1.cpp ..\Test09_Timers1
 
 copy Test10_Timers2.cpp ..\Test10_Timers2
 
+copy Test11_StackUtilization.cpp ..\Test11_StackUtilization
+
 copy Test20_Complex1.cpp ..\Test20_Complex1
 
 copy Test20_Complex1.cpp ..\Test20_Complex1huge\Test20_Complex1huge.cpp

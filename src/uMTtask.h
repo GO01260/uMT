@@ -63,8 +63,20 @@ typedef uint8_t			TaskPrio_t;			// 8 bits, task priority 0-16
 
 #define uMT_TASK_MAGIC			0xDEAD	// Magic value...
 
+typedef uint8_t		TaskId_t;			// 8 bits
 
-typedef uint8_t			TaskId_t;			// 8 bits
+///////////////////////////////////////////////////////////////////////////////////
+//
+//					STACK GUARD 
+//
+// To allow a run-time verification of the used stack area, uMT fills the stack 
+// with uMT_STACK_GUARD_MARK value [in SetupStackGuard()]
+// In Tk_GetTaskInfo(), the stack area is scanned to find which part has been modified
+////////////////////////////////////////////////////////////////////////////////////////
+
+#define uMT_STACK_GUARD_MARK	0xADDE	// 2 bytes
+#define uMT_STACK_GUARD_LIMIT	32		// Do not set uMT_STACK_GUARD_MAGIC in the last ... bytes - it must be 4 bytes aligned
+typedef uint16_t StackGuard_t;			// This also set uMT_STACK_GUARD_MARK size
 
 
 
@@ -133,6 +145,7 @@ private:
 	uMToptions_t	EV_condition;	// OR/AND event condition
 #endif
 
+	RunValue_t		Run;		// How many run
 
 	Param_t			Parameter;	// Here can be stored specifc task's parameter for Tk_Start()
 
@@ -161,7 +174,27 @@ public:
 	void Init(TaskId_t _myTid);
 	void CleanUp();
 
-	const __FlashStringHelper *TaskStatus2String();
+static 	const __FlashStringHelper *TaskStatus2String(Status_t TaskStatus);
+const __FlashStringHelper *TaskStatus2String() { return(TaskStatus2String(TaskStatus));};
+
+};
+
+
+////////////////////////////////////////////////////
+// Returned in Tk_GetTaskInfo()
+////////////////////////////////////////////////////
+
+class uMTtaskInfo
+{
+public:
+	TaskId_t	Tid;			// Task ID
+	TaskPrio_t	Priority;		// Task priority
+	Status_t	TaskStatus;		// Task's status
+	RunValue_t	Run;			// How many run
+
+	StackSize_t	StackSize;		// Stack's size in bytes
+	StackSize_t	FreeStack;		// Free stack size in bytes
+	StackSize_t MaxUsedStack;	// Maximum used stack in bytes
 
 };
 

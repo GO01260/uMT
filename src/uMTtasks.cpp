@@ -71,6 +71,7 @@ void	uTask::Init(TaskId_t _myTid)
 	StackBaseAddr = (StackPtr_t)NULL;
 	TaskStatus = S_UNUSED;
 	StackSize = 0;
+	Run = 0;
 
 	Next = (uTask *)NULL;
 
@@ -152,6 +153,8 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 	pTask->StackSize = _StackSize;
 
 #endif
+
+	SetupStackGuard(pTask);			// Store stack guard mark
 
 	UnusedQueue = UnusedQueue->Next;
 
@@ -326,7 +329,7 @@ void uMT::Reborn()
 //	Serial.println(F("Reborn()"));
 //	Serial.flush();
 
-#if defined(ARDUINO_ARCH_SAM)
+#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD) 
 	// Call Suspend() + Reschedule()
 	Suspend();
 
@@ -593,5 +596,72 @@ Errno_t	uMT::Tk_GetPriority(TaskPrio_t &ppriority)
 	return(E_SUCCESS);
 }
 
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::MaxUsedStack
+//
+////////////////////////////////////////////////////////////////////////////////////
+StackSize_t	uMT::MaxUsedStack(uTask *pTask)
+{
+	if (pTask->TaskStatus == S_UNUSED)
+		return(0);
+
+	int limit = pTask->StackSize / sizeof(StackGuard_t);
+	int idx;
+
+	StackGuard_t *StackPtr = (StackGuard_t *)pTask->StackBaseAddr;
+
+	for (idx = 0; idx < limit; idx++)
+	{
+		if (StackPtr[idx] != uMT_STACK_GUARD_MARK)
+			break;
+	}
+
+	return(pTask->StackSize - (idx * sizeof(StackGuard_t)));
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::doGetTaskInfo
+//
+////////////////////////////////////////////////////////////////////////////////////
+Errno_t	uMT::doGetTaskInfo(uTask *pTask, uMTtaskInfo &Info)
+{
+	Info.Tid = pTask->myTid;
+	Info.Priority = pTask->Priority;
+	Info.StackSize = pTask->StackSize;
+
+	Info.TaskStatus = pTask->TaskStatus;
+	Info.Run = pTask->Run;
+
+
+	if (pTask == Running)
+	{
+		Info.FreeStack = Kn_GetSP() - Running->StackBaseAddr;
+	}
+	else
+	{
+		Info.FreeStack = pTask->SavedSP - pTask->StackBaseAddr;
+	}
+
+	Info.MaxUsedStack = MaxUsedStack(pTask);
+	
+	return(E_SUCCESS);
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::Tk_GetTaskInfo
+//
+////////////////////////////////////////////////////////////////////////////////////
+Errno_t	uMT::Tk_GetTaskInfo(TaskId_t Tid, uMTtaskInfo &Info)
+{
+	if (Inited == FALSE)
+		return(E_NOT_INITED);
+
+	CHECK_VALID_TASK(Tid);
+
+	return(doGetTaskInfo(&TaskList[Tid], Info));
+}
 
 ///////////////////// EOF

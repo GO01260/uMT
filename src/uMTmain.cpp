@@ -47,7 +47,39 @@ Bool_t	uMT::Inited = FALSE;
 ///////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////
 
+////////////////////////////////////////////////////////////////////////////////////
+//
+//	uMT::SetupStackGuard
+//
+////////////////////////////////////////////////////////////////////////////////////
+void 	uMT::SetupStackGuard(uTask *	pTask)
+{
+	StackGuard_t *StackGuardPtr;
+	StackPtr_t StackPtr;
 
+	if (pTask->myTid == uMT_ARDUINO_TASK_NUM)
+	{
+		// Special case, we are the running task...
+		StackPtr = (Kn_GetSP() - uMT_STACK_GUARD_LIMIT);
+	}
+	else
+	{
+		StackPtr = (pTask->StackBaseAddr + pTask->StackSize - uMT_STACK_GUARD_LIMIT);
+	}
+
+#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD) 
+	// Align to 32 bits
+	StackPtr &= 0xFFFFFFFC;
+#endif
+
+	StackGuardPtr = (StackGuard_t *)StackPtr;
+
+	while (StackGuardPtr >= (StackGuard_t *)pTask->StackBaseAddr)
+	{
+		*StackGuardPtr-- = uMT_STACK_GUARD_MARK;
+	}
+	
+}
 
 #if uMT_ALLOCATION_TYPE==uMT_FIXED_STATIC
 
@@ -70,6 +102,8 @@ static uint8_t IdleTaskStack[uMT_DEFAULT_IDLE_STACK_SIZE];
 ////////////////////////////////////////////////////////////////////////////////////
 void 	uMT::SetupTaskStacks()
 {
+	uTask *	pTask;
+
 	//
 	// Setup Task List
 	// Skip:
@@ -78,30 +112,32 @@ void 	uMT::SetupTaskStacks()
 	//
 	for (int idx = uMT_MIN_FREE_TASK_LIST; idx < uMT_DEFAULT_TASK_NUM; idx++)
 	{
+		pTask = &TaskList[idx];
+
 		// Allocate STACK area for all tasks except IDLE & Arduino main loop()]
-		TaskList[idx].StackBaseAddr = (StackPtr_t) &(Stacks[idx - uMT_MIN_FREE_TASK_LIST][0]);
-		TaskList[idx].StackSize = uMT_DEFAULT_STACK_SIZE;
+		pTask->StackBaseAddr = (StackPtr_t) &(Stacks[idx - uMT_MIN_FREE_TASK_LIST][0]);
+		pTask->StackSize = uMT_DEFAULT_STACK_SIZE;
+		pTask->SavedSP = pTask->StackBaseAddr + pTask->StackSize; // Dummy value
 	}
 
 
-	uTask *	pTask = &TaskList[uMT_ARDUINO_TASK_NUM];
-
-	pTask->StackBaseAddr = (StackPtr_t)Kn_GetSPbase();				// Assign some sensible value...
-	pTask->StackSize = (StackPtr_t)Kn_GetRAMend() - pTask->StackBaseAddr;	// Assign some sensible value...
-
-	// Free RAM after stack allocation
-	kernelCfg.FreeRAM_0 = (StackPtr_t)Kn_GetFreeRAM();
+	// Initialized ARDUINO loop() task
+	pTask = &TaskList[uMT_ARDUINO_TASK_NUM];
+	pTask->StackBaseAddr = (StackPtr_t)(Kn_GetRAMend() - kernelCfg.Task1_Stack_Size);
+	pTask->StackSize = kernelCfg.Task1_Stack_Size;
+	SetupStackGuard(pTask);			// Store stack guard mark
 
 	// Setup Idle task
 	IdleTaskPtr = &TaskList[uMT_IDLE_TASK_NUM];	// Pointing to the IDLE task
 	IdleTaskPtr->StackBaseAddr = (StackPtr_t)&IdleTaskStack[0];
 	IdleTaskPtr->StackSize = uMT_DEFAULT_IDLE_STACK_SIZE;
+	SetupStackGuard(IdleTaskPtr);			// Store stack guard mark
 
 }
 
 #endif
 
-#if defined(ARDUINO_ARCH_SAM)
+#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD)
 #define MALLOC_HDR	8		// bytes are used for MALLOC headers
 #else
 #define MALLOC_HDR	4		// bytes are used for MALLOC headers
@@ -121,10 +157,13 @@ static uint8_t IdleTaskStack[uMT_IDLE_STACK_SIZE];
 ////////////////////////////////////////////////////////////////////////////////////
 static void 	uMT::SetupTaskStacks()
 {
+	// RAM range the board
+	kernelCfg.RAM_Start = (StackPtr_t)Kn_GetSPbase();
+	kernelCfg.RAM_End = (StackPtr_t)Kn_GetRAMend();
 
 	// Get the amount of RAM available from RAM-END (RAMEND - HeapPtr)
 	// Kn_GetFreeRAMend() returns the free memory INCLUDING the STACK for the Arduiono loop() task
-	 StackPtr_t RAMendFree = Kn_GetFreeRAMend();		// It can be called only at the beginning....
+	StackPtr_t RAMendFree = Kn_GetFreeRAMend();		// It can be called only at the beginning....
 
  	DgbStringPrint("uMT: SetupTaskStacks(): Arduino free RAM = ");
 	DgbValuePrint((unsigned int)RAMendFree);	// Determine total memory for STACKS: ignore IDLE and Tid1
@@ -171,23 +210,30 @@ static void 	uMT::SetupTaskStacks()
 	//
 	for (int idx = uMT_MIN_FREE_TASK_LIST; idx < kernelCfg.Tasks_Num; idx++)
 	{
-		// Allocate STACK area for all tasks except IDLE & Arduino main loop()]
-		TaskList[idx].StackBaseAddr = (StackPtr_t) Mem4StacksPtr;
-		TaskList[idx].StackSize = kernelCfg.AppTasks_Stack_Size;
-		Mem4StacksPtr += kernelCfg.AppTasks_Stack_Size;
+		uTask *	pTask = &TaskList[idx];
 
+		// Allocate STACK area for all tasks except IDLE & Arduino main loop()]
+		pTask->StackBaseAddr = (StackPtr_t) Mem4StacksPtr;
+		pTask->StackSize = kernelCfg.AppTasks_Stack_Size;
+		Mem4StacksPtr += kernelCfg.AppTasks_Stack_Size;
 	}
 
 
 	// Setup some sensible values for ARDUINO loop() task (Tid 1)
 	uTask *	pTask = &TaskList[uMT_ARDUINO_TASK_NUM];
+#ifdef ZAPPED
+	pTask->StackBaseAddr = (StackPtr_t)(Kn_GetRAMend() - kernelCfg.Task1_Stack_Size);
+	pTask->StackSize = kernelCfg.Task1_Stack_Size;
+#endif
 	pTask->StackBaseAddr = (StackPtr_t)Mem4StacksPtr;				// Assign some sensible value...
 	pTask->StackSize = Kn_GetRAMend() - pTask->StackBaseAddr;	// Assign some sensible value...
+	SetupStackGuard(pTask);			// Store stack guard mark
 
 	// Setup Idle task
 	IdleTaskPtr = &TaskList[uMT_IDLE_TASK_NUM];	// Pointing to the IDLE task
 	IdleTaskPtr->StackBaseAddr = (StackPtr_t)malloc(kernelCfg.Idle_Stack_Size);
 	IdleTaskPtr->StackSize = kernelCfg.Idle_Stack_Size;
+	SetupStackGuard(IdleTaskPtr);			// Store stack guard mark
 
 
 }
@@ -202,19 +248,19 @@ extern char *__malloc_heap_start;
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
-//	uMT::SetupMalloc
+//	uMT::SetupMallocLimits
 //
 ////////////////////////////////////////////////////////////////////////////////////
 void 	uMT::SetupMallocLimits()
 {
 	// Get the amount of RAM available from RAM-END (RAMEND - HeapPtr)
 	// Kn_GetFreeRAMend() returns the free memory INCLUDING the STACK for the Arduiono loop() task
-	kernelCfg.FreeRAM_0 = Kn_GetFreeRAMend();		// It can be called only at the beginning....
+//	kernelCfg.FreeRAM_0 = Kn_GetFreeRAMend();		// It can be called only at the beginning....
 
  	DgbStringPrint("uMT: SetupTaskStacks(): Arduino initial free RAM = ");
 	DgbValuePrint((unsigned int)FreeRAM_0);
 
-	kernelCfg.FreeRAM_0 -= kernelCfg.Task1_Stack_Size;		// Remove TID 1 stack
+//	kernelCfg.FreeRAM_0 -= kernelCfg.Task1_Stack_Size;		// Remove TID 1 stack
 
 	// Set HIGHMARK point (top of HEAP) for AVR malloc(), excluding TID1 stack size
 	__malloc_heap_end = (char *)(Kn_GetRAMend() - kernelCfg.Task1_Stack_Size);
@@ -222,6 +268,8 @@ void 	uMT::SetupMallocLimits()
 	// __malloc_heap_start already/will be setup in malloc() first call
 
 }
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
@@ -232,13 +280,18 @@ void 	uMT::SetupTaskStacks()
 {
 	// Setup some sensible values for ARDUINO loop() task (Tid 1)
 	uTask *	pTask = &TaskList[uMT_ARDUINO_TASK_NUM];
-	pTask->StackBaseAddr = (StackPtr_t)(__malloc_heap_end);
-	pTask->StackSize = Kn_GetRAMend() - pTask->StackBaseAddr;
+	pTask->StackBaseAddr = (StackPtr_t)(Kn_GetRAMend() - kernelCfg.Task1_Stack_Size);
+	pTask->StackSize = kernelCfg.Task1_Stack_Size;
+
+	SetupStackGuard(pTask);			// Store stack guard mark
 
 	// Setup Idle task
 	IdleTaskPtr = &TaskList[uMT_IDLE_TASK_NUM];	// Pointing to the IDLE task
 	IdleTaskPtr->StackBaseAddr = (StackPtr_t)uMTmalloc(kernelCfg.Idle_Stack_Size);
 	IdleTaskPtr->StackSize = kernelCfg.Idle_Stack_Size;
+
+	SetupStackGuard(IdleTaskPtr);	// Store stack guard mark
+
 }
 
 #endif
@@ -280,7 +333,7 @@ Errno_t	uMT::doStart()
 #if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
 
 	////////////////////////////////////////////////
-	//			Alloca TASK and STACK
+	//			Alloc TASK and STACK for IDLE
 	////////////////////////////////////////////////
 
 	// Setup MALLOC()
@@ -439,11 +492,17 @@ Errno_t	uMT::Kn_GetConfiguration(uMTcfg &Cfg)
 	Cfg.ro.Init();
 	Cfg.rw.Init();
 	
-	// Free RAM BEFORE stack allocation
-	Cfg.rw.FreeRAM_0 = (StackPtr_t)Kn_GetFreeRAM();
+
+	// it contains the free RAM at the time Kn_GetConfiguration() has been called.
+	Cfg.ro.FreeRAM = (StackPtr_t)Kn_GetFreeRAM();
+
+	Cfg.ro.RAM_Start = (StackPtr_t)Kn_GetSPbase();
+	Cfg.ro.RAM_End = (StackPtr_t)Kn_GetRAMend();
 
 	return(E_SUCCESS);
 }
+
+
 
 
 //////////////////////////// EOF

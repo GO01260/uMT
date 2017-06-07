@@ -155,6 +155,9 @@ void SETUP()
 	// Print works only AFTER Start
 	Kernel.Kn_PrintConfiguration(Cfg);
 
+
+	Kernel.Kn_PrintInternals();
+
 	delay(2000);
 
 }
@@ -417,7 +420,7 @@ static void Monitor()
 #if MONITOR_PK_AFTER==0
 		if ((counter % MONITOR_PRINT_KERNEL) == 0)
 		{
-			Kernel.Kn_PrintInternals();
+			Kernel.Kn_PrintInternals(TRUE);
 		}
 #endif
 		Serial.print(F("*** [Tid="));
@@ -461,7 +464,7 @@ static void Monitor()
 #if MONITOR_PK_AFTER==1
 		if ((counter % MONITOR_PRINT_KERNEL) == 0)
 		{
-			Kernel.Kn_PrintInternals();
+			Kernel.Kn_PrintInternals(TRUE);
 		}
 #endif
 

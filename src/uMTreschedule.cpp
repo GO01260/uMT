@@ -190,6 +190,7 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 #endif
 
 	/* Now run task */
+	Running->Run++;		// Increment run counter
 	ResumeTask(Running->SavedSP);	// INTS enabled in ResumeTask(), if needed
 
 	/* ... NEVER RETURNS!! */

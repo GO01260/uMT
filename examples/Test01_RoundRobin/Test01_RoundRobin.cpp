@@ -78,7 +78,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F(" Task1(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 	while (1)

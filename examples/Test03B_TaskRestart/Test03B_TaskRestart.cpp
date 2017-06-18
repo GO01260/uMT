@@ -84,13 +84,13 @@ static void Task2()
 	{
 	case 0:
 		Serial.print(F("  Task2(): starting #1, myTid = "));
-		Serial.println(myTid);
+		Serial.println(myTid.GetID());
 		Serial.flush();
 		break;
 
 	case 1:
 		Serial.print(F("  Task2(): RE-START #2, myTid = "));
-		Serial.println(myTid);
+		Serial.println(myTid.GetID());
 		Serial.flush();
 
 		Serial.println(F("  Task2(): suiciding..."));
@@ -102,7 +102,7 @@ static void Task2()
 	case 3:
 	default:
 		Serial.print(F("  Task2(): RE-BORN #3, myTid = "));
-		Serial.println(myTid);
+		Serial.println(myTid.GetID());
 		Serial.flush();
 		break;
 	}
@@ -148,7 +148,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_CreateTask(Task2, Tid2);
 
 	Serial.print(F(" Task1(): Task2's Tid = "));
-	Serial.println(Tid2);
+	Serial.println(Tid2.GetID());
 
 
 	Serial.print(F(" Task1(A): Active TASKS = "));

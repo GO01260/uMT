@@ -88,7 +88,7 @@ static void Task2()
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("** Task2(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 	char *oldptr = NULL;
 
@@ -148,7 +148,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_CreateTask(Task2, Tid2);
 
 	Serial.print(F("Task1(): Task2's Tid = "));
-	Serial.println(Tid2);
+	Serial.println(Tid2.GetID());
 
 	Serial.println(F("Task1(): StartTask(Task2)"));
 	Serial.flush();

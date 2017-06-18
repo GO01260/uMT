@@ -80,7 +80,7 @@ static void Task2()
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("  Task2(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 	Serial.print(F("  Task2(): Active TASKS = "));
@@ -106,7 +106,7 @@ static void Task3()
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("   Task3(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 	Serial.print(F("   Task3(): Active TASKS = "));
@@ -138,7 +138,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_CreateTask(Task2, Tid2);
 
 	Serial.print(F(" Task1(): Task2's Tid = "));
-	Serial.println(Tid2);
+	Serial.println(Tid2.GetID());
 
 
 	Serial.print(F(" Task1(A): Active TASKS = "));
@@ -152,7 +152,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_CreateTask(Task3, Tid3);
 
 	Serial.print(F(" Task1(): Task3's Tid = "));
-	Serial.println(Tid3);
+	Serial.println(Tid3.GetID());
 
 
 

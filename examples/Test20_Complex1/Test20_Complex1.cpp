@@ -64,16 +64,16 @@
 // Configuration
 //////////////////////////////////////////////////
 
-#define SUPPLIER_TIMEOUT		0			// 1/100 sec
-#define ALL_EVENTS				uMT_ALL_EVENT_MASK		// 32 events if SAM or 16 if AVR
+#define SUPPLIER_TIMEOUT		0					// xxx milliseconds
+#define ALL_EVENTS				uMT_ALL_EVENT_MASK	// 32 events if SAM or 16 if AVR
 
-#define MAX_PRODUCERS			(MAX_TASKS - 4)			// How many producers: N - (IDLE + 1 Monitor + 1 Suplier + 1 Consumer)
+#define MAX_PRODUCERS			(MAX_TASKS - 4)		// How many producers: N - (IDLE + 1 Monitor + 1 Suplier + 1 Consumer)
 
 #define VERBOSE_PRODUCER		0
 #define VERBOSE_SUPPLIER		0
 #define VERBOSE_CONSUMER		0
 
-#define SEM_ID_OFFSET			4		// See below
+#define SEM_ID_OFFSET			4					// See below
 
 ///////////////////////////////////////////
 // TID Mapping
@@ -169,9 +169,10 @@ void SETUP()
 static	TaskId_t		TidConsumer;
 static	SemId_t			SidSupplier;
 
-static unsigned int		SupplierProduced = 0;
-static unsigned int		Consumed[MAX_PRODUCERS];
-static unsigned int		OldConsumed[MAX_PRODUCERS];
+
+static uint32_t		SupplierProduced = 0;
+static uint32_t		Consumed[MAX_PRODUCERS];
+static uint32_t 	OldConsumed[MAX_PRODUCERS];
 
 
 #if VERBOSE_SUPPLIER==1
@@ -184,11 +185,13 @@ static unsigned int		OldConsumed[MAX_PRODUCERS];
 
 static void Supplier()
 {
+	Timer_t Timeout = SUPPLIER_TIMEOUT;
+
 	TaskId_t myTid;
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("Supplier: [Tid="));
-	Serial.print(myTid);
+	Serial.print(myTid.GetID());
 	Serial.print(F("] timeout="));
 	Serial.println(SUPPLIER_TIMEOUT);
 	Serial.flush();
@@ -203,8 +206,11 @@ static void Supplier()
 
 		SupplierPrintln(F("Supplier: sleeping..."));
 
+		// Take a rest from time to time...
+//		Timeout = (((SupplierProduced % 1000) == 0) ? 100 : SUPPLIER_TIMEOUT);
+
 		// Wake up after ... seconds. If 0, roundrobin
-		CheckError(F("Supplier"), Kernel.Tm_WakeupAfter(SUPPLIER_TIMEOUT)); 	
+		CheckError(F("Supplier"), Kernel.Tm_WakeupAfter(Timeout)); 	
 
 	}
 
@@ -233,7 +239,7 @@ static void Producer()
 	TaskId_t myTid;
 	SemId_t	SemId;
 	Event_t Event;
-	unsigned int Produced = 0;
+	uint32_t Produced = 0;
 
 	// Get how many
 	Kernel.Tk_GetParam(Param);
@@ -255,7 +261,7 @@ static void Producer()
 	Serial.print(F("Producer("));
 	Serial.print(ProdIndex);
 	Serial.print(F(") [Tid="));
-	Serial.print(myTid);
+	Serial.print(myTid.GetID());
 	Serial.print(F("]: items required for each part = "));
 	Serial.println(HowManyComponents);
 	Serial.flush();
@@ -311,7 +317,7 @@ static void Producer()
 #define ConsumerPrintValueln(x, y)
 #endif
 
-static void ConsumerCollect(int producer, unsigned int	&Consumed)
+static void ConsumerCollect(int producer, uint32_t	&Consumed)
 {
 	unsigned int OldConsumed = Consumed;
 	SemId_t	SemId = producer + SEM_ID_OFFSET;
@@ -351,14 +357,14 @@ static void Consumer()
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("Consumer: [Tid="));
-	Serial.print(myTid);
+	Serial.print(myTid.GetID());
 	Serial.print(F("] ALL_EVENTS=0x"));
 	Serial.println((Event_t)ALL_EVENTS, HEX);
 	Serial.flush();
 
 
 	// Clear consumed parts
-	for (int idx = 0; idx < MAX_PRODUCERS; idx++)
+	for (unsigned int idx = 0; idx < MAX_PRODUCERS; idx++)
 		Consumed[idx] = 0;
 
 
@@ -417,6 +423,8 @@ static void Monitor()
 
 		CheckError(F("Kernel.Tm_WakeupAfter(MONITOR_TIMEOUT)"), Kernel.Tm_WakeupAfter(MONITOR_TIMEOUT)); 	// Wake up after ... seconds
 
+		uint32_t _SupplierProduced = SupplierProduced;
+
 #if MONITOR_PK_AFTER==0
 		if ((counter % MONITOR_PRINT_KERNEL) == 0)
 		{
@@ -424,9 +432,13 @@ static void Monitor()
 		}
 #endif
 		Serial.print(F("*** [Tid="));
-		Serial.print(myTid);
+		Serial.print(myTid.GetID());
 		Serial.print(F("] Monitor(t="));
 		Serial.print(millis());
+		Serial.print(F(") "));
+
+		Serial.print(F("(SupplierProduced="));
+		Serial.print(_SupplierProduced);
 		Serial.print(F("): "));
 
 		for (int idx = 0; idx < MAX_PRODUCERS; idx++)
@@ -491,7 +503,7 @@ void LOOP()		// TASK TID=1
 
 	CheckError(F("Kernel.Tk_CreateTask(Supplier, TidSupplier)"), Kernel.Tk_CreateTask(Supplier, TidSupplier));
 
-	SidSupplier = (SemId_t)TidSupplier;
+	SidSupplier = (SemId_t)TidSupplier.GetID();
 
 	CheckError(F("Kernel.Tk_CreateTask(Consumer, TidConsumer)"), Kernel.Tk_CreateTask(Consumer, TidConsumer));
 

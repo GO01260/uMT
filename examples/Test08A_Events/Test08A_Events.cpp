@@ -80,6 +80,8 @@ void SETUP()
 #define EVENT_A	0x0001
 #define EVENT_B	0x0002
 
+static TaskId_t ArduinoTid;
+
 static void Task2()
 {
 	int counter = 0;
@@ -88,7 +90,7 @@ static void Task2()
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("  Task2(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 	Timer_t OldSysTick = Kernel.isr_Kn_GetKernelTick();
@@ -102,7 +104,7 @@ static void Task2()
 		Serial.println(F("  Task2(): Ev_Send(1, EVENT_A)"));
 		Serial.flush();
 
-		Kernel.Ev_Send(1, EVENT_A);
+		Kernel.Ev_Send(ArduinoTid, EVENT_A);
 
 		Timer_t NowSysTick = Kernel.isr_Kn_GetKernelTick();
 		Timer_t NowMillis = millis();
@@ -168,19 +170,18 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_CreateTask(Task2, Tid);
 
 	Serial.print(F(" Task1(): Task2's Tid = "));
-	Serial.println(Tid);
+	Serial.println(Tid.GetID());
 
 	Serial.println(F(" Task1(): StartTask(Task1)"));
 	Serial.flush();
 
  	Kernel.Tk_StartTask(Tid);
 
-	TaskId_t myTid;
 	
-	Kernel.Tk_GetMyTid(myTid);
+	Kernel.Tk_GetMyTid(ArduinoTid);
 
 	Serial.print(F(" Task1(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(ArduinoTid.GetID());
 	Serial.flush();
 
 	while (1)
@@ -223,7 +224,7 @@ void LOOP()		// TASK TID=1
 
 
 		Serial.print(F(" Task1(): Ev_Send("));
-		Serial.print(Tid);
+		Serial.print(Tid.GetID());
 		Serial.println(F(", EVENT_B)"));
 		Serial.flush();
 

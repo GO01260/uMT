@@ -291,7 +291,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F(" LOOP(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 
@@ -337,7 +337,7 @@ void LOOP()		// TASK TID=1
 
 
 	//	Kernel.Tk_CreateTask(Test_Tm_EvEvery, TEvev);
-	Test_Tm_EvEvery();
+	Test_Tm_EvEvery();		// It never returns...
 
 
 	Serial.println(F("================= END ================="));

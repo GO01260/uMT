@@ -89,7 +89,7 @@ static void Task2()
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F("  Task2(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 	Timer_t OldSysTick = Kernel.isr_Kn_GetKernelTick();
@@ -156,7 +156,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_CreateTask(Task2, Tid);
 
 	Serial.print(F(" Task1(): Task2's Tid = "));
-	Serial.println(Tid);
+	Serial.println(Tid.GetID());
 
 	Serial.println(F(" Task1(): StartTask(Task1)"));
 	Serial.flush();
@@ -168,7 +168,7 @@ void LOOP()		// TASK TID=1
 	Kernel.Tk_GetMyTid(myTid);
 
 	Serial.print(F(" Task1(): myTid = "));
-	Serial.println(myTid);
+	Serial.println(myTid.GetID());
 	Serial.flush();
 
 	while (1)

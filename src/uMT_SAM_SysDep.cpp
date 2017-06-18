@@ -34,7 +34,7 @@
 
 
 
-#if defined(ARDUINO_ARCH_SAM) 
+#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD)
 
 ///////////////////////////////////////////////////////////////////////////////////
 //
@@ -274,7 +274,23 @@ void __attribute__((naked)) __attribute__ ((noinline)) uMT::ResumeTask(StackPtr_
 
 	// Restore all the General Purposes registers (13) from the STACK, 
 	// plus the LR register (14 registers total) and thend jump back to the caller (in LR)
+
+#if defined(ARDUINO_ARCH_SAMD)
+
+	/* for cortex m0, ldm and stm are restricted to low registers */
+	asm volatile (
+		"pop   {r2-r6};"
+		"mov   r8, r3;"
+		"mov   r7, r2;"
+		"pop   {r0-r3};"
+		"mov   r9, r0;"
+		"mov   r10, r1;"
+		"mov   r11, r2;"
+		"mov   lr, r3;"
+		"bx	lr;");
+#else
 	asm volatile ("pop   {r4-r11, lr};" "bx	lr;");
+#endif
 }
 
 
@@ -333,8 +349,12 @@ void uMT::isr_Kn_IntUnlock(CpuStatusReg_t Param)
 	asm volatile ("msr PRIMASK, r0;");
 }
 
-
+#if defined(ARDUINO_ARCH_SAMD)
+extern int  __end__ ;
+#define _end	__end__
+#else
 extern int  _end ;
+#endif
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
@@ -366,7 +386,14 @@ StackPtr_t uMT::Kn_GetFreeRAMend()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 StackPtr_t uMT::Kn_GetSPbase()
 {
-	return((StackPtr_t)&_end);
+#if defined(ARDUINO_SAMD_ZERO)
+		return((StackPtr_t)&_end);		// heap is empty, use bss as start memory address
+#else
+	if (__brkval == 0)
+		return((StackPtr_t)&_end);		// heap is empty, use bss as start memory address
+	else 		
+		return ((StackPtr_t)__brkval);		// Use heap end as the start of the memory address
+#endif
 }
 
 
@@ -377,7 +404,17 @@ StackPtr_t uMT::Kn_GetSPbase()
 /////////////////////////////////////////////////////////////////////////////////////////////////
 StackPtr_t uMT::Kn_GetRAMend()
 {
+#if defined(ARDUINO_SAMD_ZERO)
+
+	return((StackPtr_t)0x20008000);
+
+#elif defined(ARDUINO_SAM_DUE)
+
 	return((StackPtr_t)0x20088000);
+
+#else
+#Error "Unsuppoted arcitecture!"
+#endif
 }
 
 

@@ -71,7 +71,7 @@ class uTimer
 	uTimer		*Next;			// Next in the queue
 //	uTimer		*Prev;			// Prev in the queue
 
-	uMT_ExtTime	NextAlarm;		// Absolute value in ticks for next alarm
+	uMTextendedTime	NextAlarm;		// Absolute value in ticks for next alarm
 	Timer_t		Timeout;		// Alarm Value (for repetitive alarms)
 
 	TimerFlag_t	Flags;			// uMT_TM_SEND_EVENT, uMT_TM_REPEAT, uMT_TM_IAM_AGENT, uMT_TM_IAM_TASK
@@ -81,12 +81,12 @@ class uTimer
 // Methods
 	const __FlashStringHelper *Flags2String();
 
-	void Init(int idx, TimerFlag_t _flags, uTask *_pTask)
+	void Init(unsigned int idx, TimerFlag_t _flags, uTask *_pTask)
 	{
 		Flags = _flags;
 		NextAlarm = 0;
 		Timeout = 0;
-		myTimerId = idx;
+		myTimerId.Init(idx);	// Initial value, TimeStamp it will be overwritten by TimerQ_PopFree()
 		magic = uMT_TIMER_MAGIC;
 		pTask = _pTask;
 		EventToSend = uMT_NULL_EVENT;

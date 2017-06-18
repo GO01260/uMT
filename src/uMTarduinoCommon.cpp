@@ -24,8 +24,30 @@
 //
 ////////////////////////////////////////////////////////////////////////////////////
 
+#ifdef WIN32
 
-#include <Arduino.h>
+
+#define SerialPRINTln(x)
+#define SerialPRINT(x)
+#define SerialPRINT2ln(x, y)
+#define SerialPRINT2(x, y)
+
+#define SerialFLUSH()
+
+#define digitalWrite(LED_BUILTIN, HIGH)
+
+
+#else
+
+#define SerialPRINTln		Serial.println
+#define SerialPRINT			Serial.print
+#define SerialPRINT2ln		Serial.println
+#define SerialPRINT2		Serial.print
+#define	SerialFLUSH			Serial.flush
+#endif
+
+
+//#include <Arduino.h>
 
 #include "uMT.h"
 
@@ -45,8 +67,8 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////
 void uMT::BadExit()
 {
-	Serial.println(F("================= uMT Kernel: BadExit() called! ================="));
-	Serial.flush();
+	SerialPRINTln(F("================= uMT Kernel: BadExit() called! ================="));
+	SerialFLUSH();
 
 	Kernel.isr_Kn_FatalError();
 
@@ -70,8 +92,8 @@ void	uMT::isr_Kn_FatalError()
 {
 	NoPreempt = TRUE;		// Prevent rescheduling....
 
-	Serial.println(F("========= isr_Kn_FatalError ==========="));
-	Serial.flush();
+	SerialPRINTln(F("========= isr_Kn_FatalError ==========="));
+	SerialFLUSH();
 
 	Kn_PrintInternals();
 
@@ -90,10 +112,10 @@ void	uMT::isr_Kn_FatalError(const __FlashStringHelper *String)
 {
 	NoPreempt = TRUE;		// Prevent rescheduling....
 
-	Serial.print(F("========= isr_Kn_FatalError ("));
-	Serial.print(String);
-	Serial.println(F(")==========="));
-	Serial.flush();
+	SerialPRINT(F("========= isr_Kn_FatalError ("));
+	SerialPRINT(String);
+	SerialPRINTln(F(")==========="));
+	SerialFLUSH();
 
 	Kn_PrintInternals();
 
@@ -158,9 +180,9 @@ void uMT::CheckTaskMagic(uTask *task, const __FlashStringHelper *String)
 {
 	if (task->magic != uMT_TASK_MAGIC)
 	{
-		Serial.print(F("uMT: CheckTaskMagic() invalid MAGIC number in TASK structure, Func="));
-		Serial.println(String);
-		Serial.flush();
+		SerialPRINT(F("uMT: CheckTaskMagic() invalid MAGIC number in TASK structure, Func="));
+		SerialPRINTln(String);
+		SerialFLUSH();
 
 		isr_Kn_FatalError();
 	}
@@ -169,35 +191,36 @@ void uMT::CheckTaskMagic(uTask *task, const __FlashStringHelper *String)
 
 	if (task->SavedSP <  task->StackBaseAddr || task->SavedSP > MaxSP)
 	{
-		Serial.print(F("uMT: CheckTaskMagic(Tid="));
-		Serial.print((unsigned int)task->myTid);
+		SerialPRINT(F("uMT: CheckTaskMagic(Tid="));
+		SerialPRINT((unsigned int)task->myTid.GetID());
 
-		Serial.print(F("): Invalid SP = "));
-		Serial.print((unsigned int)task->SavedSP);
+		SerialPRINT(F("): Invalid SP = "));
+		SerialPRINT((unsigned int)task->SavedSP);
 
-		Serial.print(F("(MIN SP = "));
-		Serial.print((unsigned int)task->StackBaseAddr);
+		SerialPRINT(F("(MIN SP = "));
+		SerialPRINT((unsigned int)task->StackBaseAddr);
 
-		Serial.print(F(" MAX SP = "));
-		Serial.print((unsigned int)MaxSP);
-		Serial.println(F(")"));
+		SerialPRINT(F(" MAX SP = "));
+		SerialPRINT((unsigned int)MaxSP);
+		SerialPRINTln(F(")"));
 
-		Serial.flush();
+		SerialFLUSH();
 
 		isr_Kn_FatalError();
 	}
 	
-
+#ifdef ZAPPED
 #if uMT_DEBUG==1
-	Serial.print(F("uMT: CheckTaskMagic: "));
-	Serial.print(String);
-	Serial.print(F(": TID = "));
-	Serial.print((unsigned int)task->myTid);
-	Serial.print(F(" - SP = "));
-	Serial.print((unsigned int)task->SavedSP);
-	Serial.print(F(" - Priority = "));
-	Serial.println(task->Priority);
-	Serial.flush();
+	SerialPRINT(F("uMT: CheckTaskMagic: "));
+	SerialPRINT(String);
+	SerialPRINT(F(": TID = "));
+	SerialPRINT((unsigned int)task->myTid);
+	SerialPRINT(F(" - SP = "));
+	SerialPRINT((unsigned int)task->SavedSP);
+	SerialPRINT(F(" - Priority = "));
+	SerialPRINTln(task->Priority);
+	SerialFLUSH();
+#endif
 #endif
 
 }
@@ -214,9 +237,9 @@ void uMT::CheckTimerMagic(uTimer *timer, const __FlashStringHelper *String)
 {
 	if (timer->magic != uMT_TIMER_MAGIC)
 	{
-		Serial.print(F("uMT: CheckTimerMagic() invalid MAGIC number in TIMER structure, Func="));
-		Serial.println(String);
-		Serial.flush();
+		SerialPRINT(F("uMT: CheckTimerMagic() invalid MAGIC number in TIMER structure, Func="));
+		SerialPRINTln(String);
+		SerialFLUSH();
 
 		isr_Kn_FatalError();
 	}
@@ -242,134 +265,321 @@ void uMT::CheckTimerMagic(uTimer *timer, const __FlashStringHelper *String)
 	extern char *__brkval;
 #endif
 
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	HELPER routines - ARDUINO
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+static void PrintMilliSeconds(Timer_t RunningTime)
+{
+	unsigned int d, h, m, s, milli;
+
+	milli = RunningTime % 1000;
+
+	RunningTime /= 1000;			// In seconds
+	s = RunningTime % 60;
+
+	RunningTime /= 60;				// In minutes
+	m = RunningTime % 60;
+
+	RunningTime /= 60;				// In hours
+	h = RunningTime % 60;
+
+	d = RunningTime / 24;			// in days
+
+	if (d > 0)
+	{
+		SerialPRINT(d);
+		SerialPRINT(F("d:"));
+	}
+	if (h > 0)
+	{
+		SerialPRINT(h);
+		SerialPRINT(F("h:"));
+	}
+
+	if (m > 0)
+	{
+		SerialPRINT(m);
+		SerialPRINT(F("m:"));
+	}
+
+	if (s > 0)
+	{
+		SerialPRINT(s);
+		SerialPRINT(F("s:"));
+	}
+
+	if (milli > 0)
+	{
+		SerialPRINT(milli);
+		SerialPRINT(F("ms"));
+	}
+}
+
+
+
+
+#if	uMT_USE_TASK_STATISTICS>=2
+static void PrintMilliSeconds(uMTextendedTime RunningTime)
+{
+	unsigned int d, h, m, s, milli;
+
+	milli = RunningTime.Low % 1000;
+
+	RunningTime = RunningTime.DivideBy(1000);			// In seconds
+	s = RunningTime.Low % 60;
+
+	RunningTime = RunningTime.DivideBy(60);			// In minutes
+	m = RunningTime.Low % 60;
+
+	RunningTime = RunningTime.DivideBy(60);			// In hours
+	h = RunningTime.Low % 60;
+
+	RunningTime = RunningTime.DivideBy(60);			// in days
+	d = RunningTime.Low;
+
+	if (d > 0)
+	{
+		SerialPRINT(d);
+		SerialPRINT(F("d:"));
+	}
+
+	if (h > 0)
+	{
+		SerialPRINT(h);
+		SerialPRINT(F("h:"));
+	}
+
+	if (m > 0)
+	{
+		SerialPRINT(m);
+		SerialPRINT(F("m:"));
+	}
+
+	if (s > 0)
+	{
+		SerialPRINT(s);
+		SerialPRINT(F("s:"));
+	}
+
+	if (milli > 0)
+	{
+		SerialPRINT(milli);
+		SerialPRINT(F("ms"));
+	}
+}
+
+static void PrintMicroSeconds(uMTextendedTime RunningTime)
+{
+	unsigned int us = RunningTime.Low % 1000;
+
+	RunningTime = RunningTime.DivideBy(1000);
+
+	if (RunningTime.High != 0 || RunningTime.Low != 0)
+	{
+		PrintMilliSeconds(RunningTime);
+		SerialPRINT(F(":"));
+	}
+
+	SerialPRINT(us);
+	SerialPRINT(F("us"));
+}
+#endif
+
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //
 //	Kn_PrintInternals - ARDUINO
 //
-// It printf internal Kernel structures for debugging ppurposes
+// It printf internal Kernel structures for debugging purposes
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-Errno_t	uMT::Kn_PrintInternals()
+Errno_t	uMT::Kn_PrintInternals(Bool_t PrintMaxUsedStack)
 {
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
+#if	uMT_USE_TASK_STATISTICS>=2
+	uMTextendedTime usTotalRunning;
+
+	usTotalRunning.Clear();
+#endif
+	
+
 	EnterCritRegion();		// Prevent rescheduling....
 
 	// Print Kernel info
-	Serial.println(F("=========== KERNEL INFO start =================="));
+	SerialPRINTln(F("=========== KERNEL INFO start =================="));
 
-	Serial.print(F("ActiveTaskNo="));
-	Serial.print(ActiveTaskNo);
+	SerialPRINT(F("ActiveTaskNo="));
+	SerialPRINT(ActiveTaskNo);
 
-	Serial.print(F(" TimeSharingEnabled="));
-	Serial.print(kernelCfg.TimeSharingEnabled);
+	SerialPRINT(F(" TimeSharingEnabled="));
+	SerialPRINT(kernelCfg.TimeSharingEnabled);
 
-	Serial.print(F(" NoPreempt="));
-	Serial.print(NoPreempt);
+	SerialPRINT(F(" NoPreempt="));
+	SerialPRINT(NoPreempt);
 
 #if LEGACY_CRIT_REGIONS==1
-	Serial.print(F(" NoResched="));
-	Serial.print(NoResched);
+	SerialPRINT(F(" NoResched="));
+	SerialPRINT(NoResched);
 #endif
 
-	Serial.print(F(" NeedResched="));
-	Serial.print(NeedResched);
+	SerialPRINT(F(" NeedResched="));
+	SerialPRINT(NeedResched);
 
-	Serial.print(F(" TickCounter.High="));
-	Serial.print(TickCounter.High);
-
-	Serial.print(F(" TickCounter.Low="));
-	Serial.print(TickCounter.Low);
-
-	Serial.print(F(" HEAP FreeRAM (bytes)="));
+	SerialPRINT(F(" HEAP_FreeRAM(bytes)="));
 #if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
-	Serial.print((size_t)(__malloc_heap_end - __brkval));
+	SerialPRINT((size_t)(__malloc_heap_end - __brkval));
 #else
-	Serial.print(kernelCfg.FreeRAM_0);
+	SerialPRINT(Kn_GetFreeRAM());
 #endif
-	Serial.println(F(""));
+	SerialPRINTln(F(""));
 
 	uTask *pTask;
 
 	// Print all tasks
-	Serial.println(F("=========== RAW TASK LIST =================="));
+	SerialPRINTln(F("=========== RAW TASK LIST =================="));
 
 	for (int idx = 0; idx < kernelCfg.Tasks_Num; idx++)
 	{
 		pTask = &TaskList[idx];
 
-		Serial.print(F("<idx="));
-		Serial.print(idx);
+//		SerialPRINT(F("< idx="));
+//		SerialPRINT(idx);
 
-		Serial.print(F(" Tid="));
-		Serial.print(pTask->myTid);
+		SerialPRINT(F("< Tid="));
+		SerialPRINT(pTask->myTid.GetID());
 
-		Serial.print(F(" Status="));
-		Serial.print(pTask->TaskStatus2String());
+		SerialPRINT(F(" Status="));
+		SerialPRINT(pTask->TaskStatus2String());
 
-		Serial.print(F(" Prio="));
-		Serial.print(pTask->Priority);
+		SerialPRINT(F(" Prio="));
+		SerialPRINT(pTask->Priority);
 
-		Serial.print(F(" SP="));
-		Serial.print((unsigned int)pTask->SavedSP, PRINT_MODE);
+		SerialPRINT(F(" SP="));
+		SerialPRINT2((unsigned int)pTask->SavedSP, PRINT_MODE);
 
-		Serial.print(F(" SPbase="));
-		Serial.print((unsigned int)pTask->StackBaseAddr, PRINT_MODE);
+		SerialPRINT(F(" SPbase="));
+		SerialPRINT2((unsigned int)pTask->StackBaseAddr, PRINT_MODE);
 
-		Serial.print(F(" SPsize="));
-		Serial.print(pTask->StackSize);
+		SerialPRINT(F(" SPsize="));
+		SerialPRINT(pTask->StackSize);
 
-		Serial.print(F(" SPfree="));
-		Serial.print(((unsigned int)pTask->SavedSP - (unsigned int)pTask->StackBaseAddr));
+		SerialPRINT(F(" SPfree="));
+		SerialPRINT(((unsigned int)pTask->SavedSP - (unsigned int)pTask->StackBaseAddr));
 
 #if	uMT_USE_EVENTS==1
-		Serial.print(F(" EV_recv=0x"));
-		Serial.print(pTask->EV_received, HEX);
+		SerialPRINT(F(" EV_recv=0x"));
+		SerialPRINT2(pTask->EV_received, HEX);
 
-		Serial.print(F(" EV_req=0x"));
-		Serial.print(pTask->EV_requested, HEX);
+		SerialPRINT(F(" EV_req=0x"));
+		SerialPRINT2(pTask->EV_requested, HEX);
 
-		Serial.print(F(" EV_cond="));
-		Serial.print(EventFlag2String(pTask->EV_condition));
+		SerialPRINT(F(" EV_cond="));
+		SerialPRINT(EventFlag2String(pTask->EV_condition));
 #endif
 
 
 #if uMT_SAFERUN==1
-		Serial.print(F(" magic=0x"));
-		Serial.print(pTask->magic, HEX);
+		SerialPRINT(F(" magic=0x"));
+		SerialPRINT2(pTask->magic, HEX);
+#endif
+		if (PrintMaxUsedStack)
+		{
+			SerialPRINT(F(" MaxUsedStack="));
+			SerialPRINT(MaxUsedStack(pTask));
+		}
+
+#if	uMT_USE_TASK_STATISTICS>=1
+		SerialPRINT(F(" Run#="));
+		SerialPRINT(pTask->Run);
 #endif
 
-		Serial.println(F(">"));
+#if	uMT_USE_TASK_STATISTICS>=2
+		SerialPRINT(F(" RunningTime="));
+		PrintMicroSeconds(pTask->usRunningTime);
+
+		usTotalRunning = usTotalRunning + pTask->usRunningTime;
+
+		SerialPRINT(F(" LastRun="));
+		PrintMicroSeconds(pTask->usLastRun);
+#endif
+
+		SerialPRINTln(F(" >"));
 	}
 
+	SerialPRINT(F("=========== UPTIME: "));
+
+	CpuStatusReg_t	CpuFlags = Kernel.isr_Kn_IntLock();	/* Enter critical region */
+
+	uMTextendedTime msNow = msTickCounter;
+
+	Kernel.isr_Kn_IntUnlock(CpuFlags);
+
+	SerialPRINT(F(" msTickCounter="));
+	PrintMilliSeconds(msTickCounter);
+
+#if	uMT_USE_TASK_STATISTICS>=2
+	SerialPRINT(F(" UserTime="));
+	PrintMicroSeconds(usTotalRunning);
+
+	SerialPRINT(F(" KernelTime="));
+	PrintMicroSeconds(usKernelRunningTime);
+
+	SerialPRINT(F(" msTickCounter-UserTime="));
+	msNow = msNow - usTotalRunning.DivideBy(1000);
+	PrintMilliSeconds(msNow);
+
+#ifdef ZAPPED
+	SerialPRINT(F(" msTickCounter.Low="));
+	SerialPRINT(msNow.Low);
+
+	SerialPRINT(F(" msTickCounter.High="));
+	SerialPRINT(msNow.High);
+
+	SerialPRINT(F(" usTotalRunning.Low="));
+	SerialPRINT(usTotalRunning.Low);
+
+	SerialPRINT(F(" usTotalRunning.High="));
+	SerialPRINT(usTotalRunning.High);
+#endif
+
+
+#endif
+
+
+	SerialPRINTln(F(" =================="));
 
 	// Print ReadyQueue
 	pTask = ReadyQueue.Head;
-	Serial.println(F("=========== ReadyQueue =================="));
+	SerialPRINTln(F("=========== ReadyQueue =================="));
 
 	while (pTask != NULL)
 	{
 
-		Serial.print(F(" Tid="));
-		Serial.print(pTask->myTid);
+		SerialPRINT(F(" Tid="));
+		SerialPRINT(pTask->myTid.GetID());
 
-		Serial.print(F(" Status="));
-		Serial.print(pTask->TaskStatus2String());
+		SerialPRINT(F(" Status="));
+		SerialPRINT(pTask->TaskStatus2String());
 
 #if uMT_SAFERUN==1
-		Serial.print(F(" magic=0x"));
-		Serial.print(pTask->magic, HEX);
+		SerialPRINT(F(" magic=0x"));
+		SerialPRINT2(pTask->magic, HEX);
 #endif
 
-		Serial.println(F(">"));
+		SerialPRINTln(F(">"));
 
 		pTask = pTask->Next;
 	}
 
 
 	// Print SemQueue
-//	Serial.println(F("=========== SemQueue =================="));
+//	SerialPRINTln(F("=========== SemQueue =================="));
 
 
 	for (int idx = 0; idx < kernelCfg.Semaphores_Num; idx++)
@@ -378,11 +588,11 @@ Errno_t	uMT::Kn_PrintInternals()
 
 		if (SemList[idx].SemValue > 0 || pTask != NULL)
 		{
-			Serial.print(F("=========== SemQueue ("));
-			Serial.print(idx);
-			Serial.print(F(") SemVal="));
-			Serial.print(SemList[idx].SemValue);
-			Serial.println(F(") =================="));
+			SerialPRINT(F("=========== SemQueue ("));
+			SerialPRINT(idx);
+			SerialPRINT(F(") SemVal="));
+			SerialPRINT(SemList[idx].SemValue);
+			SerialPRINTln(F(") =================="));
 		}
 
 
@@ -394,18 +604,18 @@ Errno_t	uMT::Kn_PrintInternals()
 		while (pTask != NULL)
 		{
 
-			Serial.print(F(" Tid="));
-			Serial.print(pTask->myTid);
+			SerialPRINT(F(" Tid="));
+			SerialPRINT(pTask->myTid.GetID());
 
-			Serial.print(F(" Status="));
-			Serial.print(pTask->TaskStatus2String());
+			SerialPRINT(F(" Status="));
+			SerialPRINT(pTask->TaskStatus2String());
 
 	#if uMT_SAFERUN==1
-			Serial.print(F(" magic=0X"));
-			Serial.print(pTask->magic, HEX);
+			SerialPRINT(F(" magic=0X"));
+			SerialPRINT2(pTask->magic, HEX);
 	#endif
 
-			Serial.println(F(">"));
+			SerialPRINTln(F(">"));
 
 			pTask = pTask->Next;
 		}
@@ -418,55 +628,101 @@ Errno_t	uMT::Kn_PrintInternals()
 	// Print TimerQueue
 	uTimer *pTimer = TimerQueue;
 
-	Serial.print(F("=========== TimerQueue (total="));
-	Serial.print(TotTimerQueued);
-	Serial.println(F(") =================="));
+	SerialPRINT(F("=========== TimerQueue (total="));
+	SerialPRINT(TotTimerQueued);
+	SerialPRINTln(F(") =================="));
 
 	while (pTimer != NULL)
 	{
 
-		Serial.print(F(" TimerId="));
-		Serial.print(pTimer->myTimerId);
+		SerialPRINT(F(" TimerId="));
+		SerialPRINT(pTimer->myTimerId.GetID());
 
-		Serial.print(F(" Flags=0X"));
-		Serial.print(pTimer->Flags, HEX);
+		SerialPRINT(F(" Flags=0X"));
+		SerialPRINT2(pTimer->Flags, HEX);
 
-		Serial.print(F(" ("));
-		Serial.print(pTimer->Flags2String());
+		SerialPRINT(F(" ("));
+		SerialPRINT(pTimer->Flags2String());
 
-		Serial.print(F(") TaskId="));
-		Serial.print(pTimer->pTask->myTid);
+		SerialPRINT(F(") TaskId="));
+		SerialPRINT(pTimer->pTask->myTid.GetID());
 
-		Serial.print(F(" NextAlarm.High="));
-		Serial.print(pTimer->NextAlarm.High);
+		SerialPRINT(F(" NextAlarm.High="));
+		SerialPRINT(pTimer->NextAlarm.High);
 
-		Serial.print(F(" NextAlarm.Low="));
-		Serial.print(pTimer->NextAlarm.Low);
+		SerialPRINT(F(" NextAlarm.Low="));
+		SerialPRINT(pTimer->NextAlarm.Low);
 
-		Serial.print(F(" Timeout="));
-		Serial.print(pTimer->Timeout);
+		SerialPRINT(F(" Timeout="));
+		SerialPRINT(pTimer->Timeout);
 
 #if	uMT_USE_EVENTS==1
-		Serial.print(F(" Event=0x"));
-		Serial.print(pTimer->EventToSend, HEX);
+		SerialPRINT(F(" Event=0x"));
+		SerialPRINT2(pTimer->EventToSend, HEX);
 #endif
 
 #if uMT_SAFERUN==1
-		Serial.print(F(" magic=0X"));
-		Serial.print(pTimer->magic, HEX);
+		SerialPRINT(F(" magic=0X"));
+		SerialPRINT2(pTimer->magic, HEX);
 
-		Serial.print(F(" TaskMagic=0X"));
-		Serial.print(pTimer->pTask->magic, HEX);
+		SerialPRINT(F(" TaskMagic=0X"));
+		SerialPRINT2(pTimer->pTask->magic, HEX);
 #endif
 
-		Serial.println(F(">"));
+		SerialPRINTln(F(">"));
 
 		pTimer = pTimer->Next;
 	}
 #endif
 
+	SerialPRINTln(F("=========== KERNEL INFO end =================="));
 
-	Serial.println(F("=========== KERNEL INFO end =================="));
+	ExitCritRegion();		// Allow rescheduling....
+
+	return(E_SUCCESS);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//
+//	Tk_PrintInfo - ARDUINO
+//
+// It printf internal Kernel task structures for debugging purposes
+//
+/////////////////////////////////////////////////////////////////////////////////////////////////
+Errno_t	uMT::Tk_PrintInfo(uMTtaskInfo &Info)
+{
+	if (Inited == FALSE)
+		return(E_NOT_INITED);
+
+	EnterCritRegion();		// Prevent rescheduling....
+
+	SerialPRINTln(F("=========== TASK INFO PRINT start =================="));
+
+	SerialPRINT(F("Tid           : "));
+	SerialPRINTln(Info.Tid.GetID());
+	SerialPRINT(F("Priority      : "));
+	SerialPRINTln(Info.Priority);
+	SerialPRINT(F("TaskStatus    : "));
+	SerialPRINTln(uTask::TaskStatus2String(Info.TaskStatus));
+
+#if	uMT_USE_TASK_STATISTICS>=1
+	SerialPRINT(F("Run           : "));
+	SerialPRINTln(Info.Run);
+#endif
+
+#if	uMT_USE_TASK_STATISTICS>=2
+	SerialPRINT(F("RunningTime   : "));
+	PrintMicroSeconds(Info.usRunningTime);
+#endif
+
+	SerialPRINT(F("StackSize     : "));
+	SerialPRINTln(Info.StackSize);
+	SerialPRINT(F("FreeStack     : "));
+	SerialPRINTln(Info.FreeStack);
+	SerialPRINT(F("MaxUsedStack  : "));
+	SerialPRINTln(Info.MaxUsedStack);
+
+	SerialPRINTln(F("=========== TASK INFO PRINT end =================="));
 
 	ExitCritRegion();		// Allow rescheduling....
 
@@ -478,60 +734,62 @@ Errno_t	uMT::Kn_PrintInternals()
 //
 //	Kn_PrintConfiguration - ARDUINO
 //
-// It printf internal Kernel structures for debugging ppurposes
+// It printf configuration structures for debugging purposes
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
 Errno_t	uMT::Kn_PrintConfiguration(uMTcfg &Cfg)
 {
-	if (Inited == FALSE)
-		return(E_NOT_INITED);
+	if (Inited)
+		EnterCritRegion();		// Prevent rescheduling....
 
-	EnterCritRegion();		// Prevent rescheduling....
-
-	Serial.println(F("=========== KERNEL CONFIGURATION PRINT start =================="));
+	SerialPRINTln(F("=========== KERNEL CONFIGURATION PRINT start =================="));
 
 
-	Serial.print(F("Use_Events         : "));
-	Serial.println((Cfg.ro.Use_Events ? F("YES") : F("NO")));
-	Serial.print(F("Use_Semaphores     : "));
-	Serial.println((Cfg.ro.Use_Semaphores ? F("YES") : F("NO")));
-	Serial.print(F("Use_Timers         : "));
-	Serial.println((Cfg.ro.Use_Timers ? F("YES") : F("NO")));
-	Serial.print(F("Use_RestartTask    : "));
-	Serial.println((Cfg.ro.Use_RestartTask ? F("YES") : F("NO")));
-	Serial.print(F("Use_PrintInternals : "));
-	Serial.println((Cfg.ro.Use_PrintInternals ? F("YES") : F("NO")));
+	SerialPRINT(F("Use_Events           : "));
+	SerialPRINTln((Cfg.ro.Use_Events ? F("YES") : F("NO")));
+	SerialPRINT(F("Use_Semaphores       : "));
+	SerialPRINTln((Cfg.ro.Use_Semaphores ? F("YES") : F("NO")));
+	SerialPRINT(F("Use_Timers           : "));
+	SerialPRINTln((Cfg.ro.Use_Timers ? F("YES") : F("NO")));
+	SerialPRINT(F("Use_RestartTask      : "));
+	SerialPRINTln((Cfg.ro.Use_RestartTask ? F("YES") : F("NO")));
+	SerialPRINT(F("Use_PrintInternals   : "));
+	SerialPRINTln((Cfg.ro.Use_PrintInternals ? F("YES") : F("NO")));
 
-	Serial.print(F("Events_Num         : "));
-	Serial.println(Cfg.ro.Events_Num);
+	SerialPRINT(F("Tasks_Num            : "));
+	SerialPRINTln(Cfg.rw.Tasks_Num);
+	SerialPRINT(F("Events_Num           : "));
+	SerialPRINTln(Cfg.ro.Events_Num);
+	SerialPRINT(F("Semaphores_Num       : "));
+	SerialPRINTln(Cfg.rw.Semaphores_Num);
+	SerialPRINT(F("Events_Num           : "));
+	SerialPRINTln(Cfg.ro.Events_Num);
+	SerialPRINT(F("AgentTimers_Num      : "));
+	SerialPRINTln(Cfg.rw.AgentTimers_Num);
+	SerialPRINT(F("AppTasks_Stack_Size  : "));
+	SerialPRINTln(Cfg.rw.AppTasks_Stack_Size);
+	SerialPRINT(F("Max_Task1_Stack      : "));
+	SerialPRINTln(Cfg.rw.Task1_Stack_Size);
+	SerialPRINT(F("Idle_Stack_Size      : "));
+	SerialPRINTln(Cfg.rw.Idle_Stack_Size);
 
-	Serial.print(F("Tasks_Num          : "));
-	Serial.println(Cfg.rw.Tasks_Num);
-	Serial.print(F("Semaphores_Num     : "));
-	Serial.println(Cfg.rw.Semaphores_Num);
-	Serial.print(F("Events_Num         : "));
-	Serial.println(Cfg.ro.Events_Num);
-	Serial.print(F("AgentTimers_Num    : "));
-	Serial.println(Cfg.rw.AgentTimers_Num);
-	Serial.print(F("AppTasks_Stack_Size: "));
-	Serial.println(Cfg.rw.AppTasks_Stack_Size);
-	Serial.print(F("Max_Task1_Stack    : "));
-	Serial.println(Cfg.rw.Task1_Stack_Size);
-	Serial.print(F("Idle_Stack_Size    : "));
-	Serial.println(Cfg.rw.Idle_Stack_Size);
+	SerialPRINT(F("RAM_Start(Heap start): "));
+	SerialPRINT2ln(Cfg.ro.RAM_Start, PRINT_MODE);
+	SerialPRINT(F("RAM_End              : "));
+	SerialPRINT2ln(Cfg.ro.RAM_End, PRINT_MODE);
+	SerialPRINT(F("FreeRAM              : "));
+	SerialPRINTln(Cfg.ro.FreeRAM);
+	SerialPRINT(F("BlinkingLED          : "));
+	SerialPRINTln(Cfg.rw.BlinkingLED);
+	SerialPRINT(F("IdleLED              : "));
+	SerialPRINTln(Cfg.rw.IdleLED);
+	SerialPRINT(F("TimeSharingEnable    : "));
+	SerialPRINTln(Cfg.rw.TimeSharingEnabled);
 
-	Serial.print(F("FreeRAM_0          : "));
-	Serial.println(Cfg.rw.FreeRAM_0);
-	Serial.print(F("BlinkingLED        : "));
-	Serial.println(Cfg.rw.BlinkingLED);
-	Serial.print(F("IdleLED            : "));
-	Serial.println(Cfg.rw.IdleLED);
-	Serial.print(F("TimeSharingEnable  : "));
-	Serial.println(Cfg.rw.TimeSharingEnabled);
+	SerialPRINTln(F("=========== KERNEL CONFIGURATION PRINT end =================="));
 
-	Serial.println(F("=========== KERNEL CONFIGURATION PRINT end =================="));
-
-	ExitCritRegion();		// Allow rescheduling....
+	if (Inited)
+		ExitCritRegion();		// Allow rescheduling....
 
 	return(E_SUCCESS);
 }
@@ -561,7 +819,7 @@ const __FlashStringHelper *uTimer::Flags2String()
 //	TaskStatus2String - ARDUINO
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
-const __FlashStringHelper *uTask::TaskStatus2String()
+const __FlashStringHelper *uTask::TaskStatus2String(Status_t TaskStatus)
 	{
 	switch (TaskStatus)
 	{
@@ -589,7 +847,7 @@ void printProgStr (const char * str)
 		return;
 
 	while ((c = pgm_read_byte(str++)))
-		Serial.print (c);
+		SerialPRINT (c);
 } // end of printProgStr
 #endif
 
@@ -655,7 +913,7 @@ unsigned uMTdoTicksWork()
 	// Check if some ALARM is expired
 	if (Kernel.TimerQueue != NULL)
 	{
-		if (Kernel.TimerQueue->NextAlarm <= Kernel.TickCounter)
+		if (Kernel.TimerQueue->NextAlarm <= Kernel.msTickCounter)
 		{
 			Kernel.AlarmExpired = TRUE;
 			ForceReschedule = 1;

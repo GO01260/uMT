@@ -32,9 +32,16 @@
 #include "uMTdebug.h"
 
 
+///////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////
+//				INITIALIZE STATIC MEMBERS uMT
+///////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////
+
 uMT Kernel;
 
 Bool_t	uMT::Inited = FALSE;
+uint16_t uMTobject_id::ObjectNumber = 0;
 
 #ifndef WIN32
 #include <stdlib.h>
@@ -57,7 +64,7 @@ void 	uMT::SetupStackGuard(uTask *	pTask)
 	StackGuard_t *StackGuardPtr;
 	StackPtr_t StackPtr;
 
-	if (pTask->myTid == uMT_ARDUINO_TASK_NUM)
+	if (pTask->myTid.Index == uMT_ARDUINO_TASK_NUM)
 	{
 		// Special case, we are the running task...
 		StackPtr = (Kn_GetSP() - uMT_STACK_GUARD_LIMIT);
@@ -329,7 +336,6 @@ Errno_t	uMT::doStart()
 #endif
 
 
-
 #if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
 
 	////////////////////////////////////////////////
@@ -381,24 +387,24 @@ Errno_t	uMT::doStart()
 	//
 	// Setup AGENT TIMER List
 	//
-	for (int idx = 0; idx < kernelCfg.AgentTimers_Num; idx++)
+	for (unsigned int idx = 0; idx < kernelCfg.AgentTimers_Num; idx++)
 	{
 		uTimer *pTimer = &TimerAgentList[idx];
 
 		pTimer->Init(kernelCfg.Tasks_Num + idx, uMT_TM_IAM_AGENT, (uTask *)NULL);
 
-		pTimer->Next = (idx == uMT_MAX_TIMER_AGENT_NUM - 1) ? NULL : &TimerAgentList[idx + 1];
+		pTimer->Next = (idx == kernelCfg.AgentTimers_Num - 1) ? NULL : &TimerAgentList[idx + 1];
 	}
 
 	FreeTimerQueue = &TimerAgentList[0];
 
 #endif
 
-	TickCounter = 0;			// Kernel tick counter
+	msTickCounter.Clear();			// Kernel tick counter
 
 
 	// Init Task List (all tasks)
-	for (int idx = 0; idx < kernelCfg.Tasks_Num; idx++)
+	for (unsigned int idx = 0; idx < kernelCfg.Tasks_Num; idx++)
 	{
 		TaskList[idx].Init(idx);
 	}
@@ -412,7 +418,7 @@ Errno_t	uMT::doStart()
 	//		ZERO: it is the IDLE task
 	//		ONE: it is the Arduino MAIN loop()
 	//
-	for (int idx = uMT_MIN_FREE_TASK_LIST; idx < kernelCfg.Tasks_Num; idx++)
+	for (unsigned int idx = uMT_MIN_FREE_TASK_LIST; idx < kernelCfg.Tasks_Num; idx++)
 	{
 		TaskList[idx].Next = (idx == kernelCfg.Tasks_Num - 1 ? NULL : &TaskList[idx + 1]);
 	}
@@ -429,6 +435,7 @@ Errno_t	uMT::doStart()
 	IdleTaskPtr->StartAddress = IdleLoop;
 	IdleTaskPtr->BadExit = BadExit;
 #endif	
+
 
 	// Setup task "Arduino"
 	DgbStringPrint("uMT: Kn_Start(): Arduino SP = ");
@@ -448,6 +455,7 @@ Errno_t	uMT::doStart()
 	Running->BadExit = BadExit;
 #endif	
 
+
 #if uMT_USE_SEMAPHORES==1
 
 #if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
@@ -460,7 +468,7 @@ Errno_t	uMT::doStart()
 #endif
 
 	// Init Semaphore List
-	for (int idx = 0; idx < kernelCfg.Semaphores_Num; idx++)
+	for (unsigned int idx = 0; idx < kernelCfg.Semaphores_Num; idx++)
 	{
 		SemList[idx].Init();	// Init
 	}
@@ -477,6 +485,17 @@ Errno_t	uMT::doStart()
 
 	// Setup SYSTEM TICK
 	SetupSysTicks();
+
+#if	uMT_USE_TASK_STATISTICS>=2
+	usKernelRunningTime.Clear();
+
+	Running->usRunningTime.Low = micros();
+
+	// Remember startime
+	usUserStartTime = micros();
+
+#endif
+
 
 	return(E_SUCCESS);
 }

@@ -57,17 +57,17 @@ Errno_t uMT::Tm_WakeupAfter(Timer_t timeout)
 		// Get a FREE TIMER
 		uTimer *pTimer = &Running->TaskTimer;
 
-		DgbStringPrint(F(" TickCounter.High="));
-		DgbStringPrint(TickCounter.High);
+		DgbStringPrint(F(" msTickCounter.High="));
+		DgbStringPrint(msTickCounter.High);
 
-		DgbStringPrint(F(" TickCounter.Low="));
-		DgbStringPrint(TickCounter.Low);
+		DgbStringPrint(F(" msTickCounter.Low="));
+		DgbStringPrint(msTickCounter.Low);
 
 		DgbStringPrint(F(" timeout="));
 		DgbStringPrint(timeout);
 
 		Running->TaskStatus = S_TBLOCKED;
-		pTimer->NextAlarm = TickCounter + timeout;
+		pTimer->NextAlarm = msTickCounter + timeout;
 		pTimer->Timeout = timeout;
 
 // NOT NEEDED		pTimer->pTask = Running;		// Running task
@@ -135,16 +135,16 @@ Errno_t uMT::Timer_EventTimout(Timer_t timeout, Event_t Event, TimerId_t &TmId, 
 		return(E_NOMORE_TIMERS);
 	}
 
-	DgbStringPrint(F(" TickCounter.High="));
-	DgbStringPrint(TickCounter.High);
+	DgbStringPrint(F(" msTickCounter.High="));
+	DgbStringPrint(msTickCounter.High);
 
-	DgbStringPrint(F(" TickCounter.Low="));
-	DgbStringPrint(TickCounter.Low);
+	DgbStringPrint(F(" msTickCounter.Low="));
+	DgbStringPrint(msTickCounter.Low);
 
 	DgbStringPrint(F(" timeout="));
 	DgbStringPrint(timeout);
 
-	pTimer->NextAlarm = TickCounter + timeout;
+	pTimer->NextAlarm = msTickCounter + timeout;
 	pTimer->Timeout = timeout;
 	pTimer->pTask = Running;		// Running task
 	pTimer->Flags = _Flags;	
@@ -203,13 +203,14 @@ Errno_t uMT::Tm_Cancel(TimerId_t TmId)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	if (TimerId_Check(TmId) == FALSE)
-		return(E_INVALID_TIMERID);
+	uTimer *pTimer = Tmid2TimerPtr(TmId);
 
+	if (pTimer == NULL)
+		return(E_INVALID_TIMERID);
 
 	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
-	Errno_t errno = TimerQ_CancelTimer(Tmid2TimerPtr(TmId));
+	Errno_t errno = TimerQ_CancelTimer(pTimer);
 
 	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
 

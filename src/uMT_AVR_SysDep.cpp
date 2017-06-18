@@ -64,8 +64,8 @@ void __attribute__((noinline)) uMT::NewStackReschedule()
 #if uMT_USE_RESTARTTASK==1			// Not for ARDUINO UNO
 	SP = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE - 1];		// Load PRIVATE Kernel STACK
 
-	// We are using application STACK
-	KernelStackMode = FALSE;
+	// We are using Kernel Private STACK
+	KernelStackMode = TRUE;
 #endif
 
 	// Call Reschedule
@@ -86,8 +86,8 @@ void __attribute__((noinline)) uMT::NewStackReborn()
 #if uMT_USE_RESTARTTASK==1			// Not for ARDUINO UNO
 	SP = (StackPtr_t)&KernelStack[uMT_KERNEL_STACK_SIZE - 1];		// Load PRIVATE Kernel STACK
 
-	// We are using application STACK
-	KernelStackMode = FALSE;
+	// We are using Kernel Private STACK
+	KernelStackMode = TRUE;
 #endif
 
 	// Call Reborn
@@ -214,15 +214,12 @@ void __attribute__ ((noinline)) uMT::Suspend()
 	// Create a STACK like an ISR
 	iMT_ISR_Entry();
 
-//	iMT_ISR_Exit();				// For testing purpose only...
-
 	cli();		/* No interrupts now! */
-
-//	SavedStackPtr = SP;		// Save Task's Stack Pointer, testing version
 
 	Running->SavedSP = SP;	// Save Task's Stack Pointer
 
-	NoPreempt = TRUE;		// Prevent further rescheduling.... until next 
+	NoPreempt = TRUE;		// Prevent further rescheduling.... until next
+
 
 	Reschedule();
 
@@ -301,9 +298,9 @@ StackPtr_t uMT::Kn_GetFreeRAM()
 StackPtr_t uMT::Kn_GetSPbase()
 {
 	if ((uint16_t)__brkval == 0)
-		return ((uint16_t)&__bss_end);		// heap is empty, use bss as start memory address
+		return ((StackPtr_t)&__bss_end);		// heap is empty, use bss as start memory address
 	else 		
-		return ((uint16_t)__brkval);		// Use heap end as the start of the memory address
+		return ((StackPtr_t)__brkval);		// Use heap end as the start of the memory address
 }
 
 

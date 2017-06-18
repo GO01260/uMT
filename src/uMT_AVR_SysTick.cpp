@@ -307,19 +307,19 @@ inline void uMT_SystemTicks()
 {
 
 #if uMT_USE_WTD_4_TICKS==1			// Using WDT
-	Kernel.TickCounter++;
+	Kernel.msTickCounter++;
 #endif
 
 #if uMT_USE_TIMER0_4_TICKS==1		// Using TIMER0
-	if (timer0_millis < Kernel.TickCounter.Low) // RollOver..
-			Kernel.TickCounter.High++;
+	if (timer0_millis < Kernel.msTickCounter.Low) // RollOver..
+			Kernel.msTickCounter.High++;
 
-	Kernel.TickCounter.Low = timer0_millis;		// Simply copy ticks counter...
+	Kernel.msTickCounter.Low = timer0_millis;		// Simply copy ticks counter...
 #endif
 
 	if (Kernel.kernelCfg.BlinkingLED)
 	{
-		if ((Kernel.TickCounter % uMT_TICKS_SECONDS) == 0)
+		if ((Kernel.msTickCounter % uMT_TICKS_SECONDS) == 0)
 		{
 			volatile static Bool_t f_wdt = TRUE;
 
@@ -349,7 +349,6 @@ inline void uMT_SystemTicks()
 
 		Kernel.NoPreempt = TRUE;		// Prevent further rescheduling.... until next one
 
-
 		// Switch to private stack and call Reschedule();
 		Kernel.NewStackReschedule();
 
@@ -372,7 +371,7 @@ void uMT::SetupSysTicks()
 	digitalWrite(LED_BUILTIN, LOW);
 
 	// Align SystemTick
-	Kernel.TickCounter.Low = timer0_millis;		// Simply copy ticks counter...
+	Kernel.msTickCounter.Low = timer0_millis;		// Simply copy ticks counter...
 }
 
 

@@ -104,14 +104,10 @@ Errno_t uMT::doEv_Send(TaskId_t Tid, Event_t Event, Bool_t AllowPreemption)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	if (Tid >= kernelCfg.Tasks_Num)
-	{
-		DgbStringPrint("uMT: Ev_Send(): E_INVALID_TID => ");
-		DgbValuePrintLN(Tid);
-		return(E_INVALID_TASKID);
-	}
+	uTask *pTask;
 
-	uTask *pTask = &TaskList[Tid];
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
 
 	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
 
@@ -205,13 +201,13 @@ Errno_t uMT::Ev_Receive(
 			// Create a TASK TIMER to manage the timeout
 			////////////////////////////////////////////////
 
-			pTimer->NextAlarm = TickCounter + timeout;
+			pTimer->NextAlarm = msTickCounter + timeout;
 			pTimer->Flags = uMT_TM_IAM_TASK;	// To reset other flags
 		
 			Running->TaskStatus = S_TBLOCKED;	// TIMER BLOCKED
 
 			DgbStringPrint("uMT(");
-			DgbValuePrint(TickCounter.Low);
+			DgbValuePrint(msTickCounter.Low);
 			DgbStringPrint("): Ev_Receive(): timeout = ");
 			DgbValuePrint(timeout);
 			DgbStringPrintLN(" - TimerQ_Insert()");
@@ -222,7 +218,7 @@ Errno_t uMT::Ev_Receive(
 
 
 		DgbStringPrint("uMT(");
-		DgbValuePrint(TickCounter.Low);
+		DgbValuePrint(msTickCounter.Low);
 		DgbStringPrintLN("): Ev_Receive(): Suspend()...");
 
 		isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
@@ -249,7 +245,7 @@ Errno_t uMT::Ev_Receive(
 		if (pTimer->Timeout != (Timer_t)0)		// A timer was set
 		{
 			DgbStringPrint("uMT(");
-			DgbValuePrint(TickCounter.Low);
+			DgbValuePrint(msTickCounter.Low);
 			DgbStringPrint("): Ev_Receive(myTid=");
 			DgbValuePrint(Running->myTid);
 
@@ -267,7 +263,7 @@ Errno_t uMT::Ev_Receive(
 						*eventout = Running->EV_received;
 
 					DgbStringPrint("uMT(");
-					DgbValuePrint(TickCounter.Low);
+					DgbValuePrint(msTickCounter.Low);
 					DgbStringPrintLN("): Ev_Receive(): returning E_TIMEOUT");
 
 					isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */
@@ -284,7 +280,7 @@ Errno_t uMT::Ev_Receive(
 				if (TimerQ_CancelTimer(pTimer) != E_SUCCESS)
 				{
 					DgbStringPrint("uMT(");
-					DgbValuePrint(TickCounter.Low);
+					DgbValuePrint(msTickCounter.Low);
 					DgbStringPrint("): Ev_Receive(): Timer Flag = 0x");
 					DgbValuePrint2LN(pTimer->Flags, HEX);
 
@@ -308,7 +304,7 @@ Errno_t uMT::Ev_Receive(
 	Running->EV_received = Running->EV_requested = uMT_NULL_EVENT;
 
 	DgbStringPrint("uMT(");
-	DgbValuePrint(TickCounter.Low);
+	DgbValuePrint(msTickCounter.Low);
 	DgbStringPrintLN("): Ev_Receive(): returning E_SUCCESS");
 
 	isr_Kn_IntUnlock(CpuFlags);	/* End of critical region */

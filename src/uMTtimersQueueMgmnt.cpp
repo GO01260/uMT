@@ -138,7 +138,7 @@ void uMT::TimerQ_Expired(uTimer *pTimer)
 	if (pTimer->Flags & uMT_TM_REPEAT)
 	{
 		// Insert in the TIMER queue again
-		pTimer->NextAlarm = TickCounter + pTimer->Timeout;
+		pTimer->NextAlarm = msTickCounter + pTimer->Timeout;
 
 		TimerQ_Insert(pTimer);
 	}
@@ -268,6 +268,8 @@ uTimer * uMT::TimerQ_PopFree()
 	uTimer *pTimer = FreeTimerQueue;
 	FreeTimerQueue = FreeTimerQueue->Next;
 
+	pTimer->myTimerId.NewTimestamp();		// Set new timestamp
+
 	CHECK_TIMER_MAGIC(pTimer, "TimerQ_PopFree");
 
 	return(pTimer);
@@ -289,14 +291,14 @@ void uMT::TimerQ_PushFree(uTimer *pTimer)
 	if (pTimer->Flags & uMT_TM_IAM_AGENT)
 	{
 #if uMT_SAFERUN==1
-		if (pTimer->myTimerId < kernelCfg.Tasks_Num)
+		if (pTimer->myTimerId.Index < kernelCfg.Tasks_Num)
 		{
-			SerialPrintln(F("uMT: TimerQ_PushFree: trying to free a TASK Timer"));
-
-			isr_Kn_FatalError();
-
+			isr_Kn_FatalError(F("uMT: TimerQ_PushFree: trying to free a TASK Timer"));
 		}
 #endif
+
+		/* Set this element as DELETED */
+		pTimer->myTimerId.ClearTimestamp();
 
 		// We can only free Timer AGENT
 		pTimer->Next = FreeTimerQueue;

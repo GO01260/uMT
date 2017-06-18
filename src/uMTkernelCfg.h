@@ -45,6 +45,15 @@ public:
 	Bool_t		Use_PrintInternals;		// Readonly
 	Cfg_data_t	Events_Num;				// Readonly
 
+	// If Kn_GetConfiguration() called BEFORE Kn_Start(), free memory BEFORE STACK allocation (=> memory availale for application)
+	// If Kn_GetConfiguration() called AFTER Kn_Start(), free memory AFTER STACK allocation (=> memory availale for application)
+	// In short, it contains the free RAM at the time Kn_GetConfiguration() has been called.
+	StackPtr_t	FreeRAM;
+
+	StackPtr_t	RAM_Start;				// Initial Ram (HEAP) start
+	StackPtr_t	RAM_End;				// Ram end
+
+
 	void Init()
 	{
 		Use_Events			= uMT_USE_EVENTS;
@@ -54,6 +63,10 @@ public:
 		Use_PrintInternals	= uMT_USE_PRINT_INTERNALS;
 
 		Events_Num = uMT_DEFAULT_EVENTS_NUM;
+
+		FreeRAM = 0;				// Clear
+		RAM_Start = 0;				// Clear
+		RAM_End = 0;				// Clear
 	};
 
 };
@@ -66,11 +79,6 @@ class rwCfg
 	friend class uMT;
 
 public:
-	// If Kn_GetConfiguration() called BEFORE Kn_Start(), free memory BEFORE STACK allocation (=> memory availale for application)
-	// If Kn_GetConfiguration() called AFTER Kn_Start(), free memory AFTER STACK allocation (=> memory availale for application)
-	// In short, it contains the free RAM at the time Kn_GetConfiguration() has been called.
-	StackPtr_t	FreeRAM_0;
-
 	Cfg_data_t	Tasks_Num;				// Max task number (cannot be less than 3!!!)
 	Cfg_data_t	Semaphores_Num;			// Max number of Semaphores
 	Cfg_data_t	AgentTimers_Num;		// Max number of AGENT Timers
@@ -96,9 +104,9 @@ volatile Bool_t	TimeSharingEnabled;		// It controls TimeSharing
 		IdleLED = TRUE;
 
 		TimeSharingEnabled = TRUE;
-		FreeRAM_0 = 0;				// Clear
 	};
 };
+
 
 class uMTcfg
 {

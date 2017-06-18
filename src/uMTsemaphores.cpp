@@ -102,13 +102,13 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 		////////////////////////////////////////////////
 		pTimer->Timeout = timeout;
 
-		pTimer->NextAlarm = TickCounter + timeout;
+		pTimer->NextAlarm = msTickCounter + timeout;
 		pTimer->Flags = uMT_TM_IAM_TASK;	// To reset other flags
 		
 		Running->TaskStatus = S_TBLOCKED;	// TIMER BLOCKED
 
 		DgbStringPrint("uMT(");
-		DgbValuePrint(TickCounter.Low);
+		DgbValuePrint(msTickCounter.Low);
 		DgbStringPrint("): Sm_Claim(myTid=");
 		DgbValuePrint(Running->myTid);
 		DgbStringPrint("): timeout = ");
@@ -150,7 +150,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 	if (timeout != (Timer_t)0)		// A timer was set?
 	{
 		DgbStringPrint("uMT(");
-		DgbValuePrint(TickCounter.Low);
+		DgbValuePrint(msTickCounter.Low);
 		DgbStringPrint("): Sm_Claim(myTid=");
 		DgbValuePrint(Running->myTid);
 
@@ -186,7 +186,7 @@ Errno_t	uMT::Sm_Claim(SemId_t Sid, uMToptions_t Options
 			if (TimerQ_CancelTimer(pTimer) != E_SUCCESS)
 			{
 				DgbStringPrint("uMT(");
-				DgbValuePrint(TickCounter.Low);
+				DgbValuePrint(msTickCounter.Low);
 				DgbStringPrint("): Sm_Claim(): Timer Flag = 0x");
 				DgbValuePrint2LN(pTimer->Flags, HEX);
 

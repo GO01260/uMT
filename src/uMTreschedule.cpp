@@ -70,6 +70,14 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 
 	LastRunning = Running;		// Remember last task...
 
+#if	uMT_USE_TASK_STATISTICS>=2
+	// Update Running time
+	Timer_t usEnterTime = micros();
+
+	Running->usLastRun = usEnterTime - usUserStartTime;
+	Running->usRunningTime = Running->usRunningTime + Running->usLastRun;
+#endif
+
 	if (Running->TaskStatus == S_RUNNING)
 	{
 		//
@@ -144,7 +152,7 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 			break;
 		}
 
-		if (TimerQueue->NextAlarm > TickCounter)
+		if (TimerQueue->NextAlarm > msTickCounter)
 		{
 			// Not yet expired
 			break;
@@ -189,8 +197,19 @@ void __attribute__ ((noinline)) uMT::Reschedule()
 	AlarmExpired = FALSE;
 #endif
 
-	/* Now run task */
+#if	uMT_USE_TASK_STATISTICS>=1
 	Running->Run++;		// Increment run counter
+#endif
+
+#if	uMT_USE_TASK_STATISTICS>=2
+	// Remember startime
+//	StartTime = msTickCounter.Low;
+	usUserStartTime = micros();
+
+	usKernelRunningTime = usKernelRunningTime + (usUserStartTime - usEnterTime);
+#endif
+
+	/* Now run task */
 	ResumeTask(Running->SavedSP);	// INTS enabled in ResumeTask(), if needed
 
 	/* ... NEVER RETURNS!! */

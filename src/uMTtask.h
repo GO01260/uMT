@@ -27,13 +27,6 @@
 #ifndef uMT_TASK_H
 #define uMT_TASK_H
 
-///////////////////////////////////////////////////////////////////////////////
-// This macro check for VALID TASK ID and returns E_INVALID_TASKID if not valid
-// TASK 0 is the IDLE task
-///////////////////////////////////////////////////////////////////////////////
-#define CHECK_VALID_TASK(Tid) { if (Tid == 0 || Tid >= kernelCfg.Tasks_Num) return(E_INVALID_TASKID); }
-
-
 
 ////////////////////////////////////////////////////////////////////////////////////
 //
@@ -63,7 +56,9 @@ typedef uint8_t			TaskPrio_t;			// 8 bits, task priority 0-16
 
 #define uMT_TASK_MAGIC			0xDEAD	// Magic value...
 
-typedef uint8_t		TaskId_t;			// 8 bits
+//typedef uint8_t		TaskId_t;		// 8 bits
+typedef uMTobject_id	TaskId_t;		// TASK ID
+
 
 ///////////////////////////////////////////////////////////////////////////////////
 //
@@ -145,7 +140,14 @@ private:
 	uMToptions_t	EV_condition;	// OR/AND event condition
 #endif
 
+#if	uMT_USE_TASK_STATISTICS>=1
 	RunValue_t		Run;		// How many run
+#endif
+
+#if	uMT_USE_TASK_STATISTICS>=2
+	uMTextendedTime	usRunningTime;	// Total Running Time in uSeconds
+	Timer_t			usLastRun;		// uSeconds of the last run
+#endif
 
 	Param_t			Parameter;	// Here can be stored specifc task's parameter for Tk_Start()
 
@@ -171,7 +173,7 @@ private:
 
 
 public:
-	void Init(TaskId_t _myTid);
+	void Init(unsigned int myIndex);
 	void CleanUp();
 
 static 	const __FlashStringHelper *TaskStatus2String(Status_t TaskStatus);
@@ -187,14 +189,20 @@ const __FlashStringHelper *TaskStatus2String() { return(TaskStatus2String(TaskSt
 class uMTtaskInfo
 {
 public:
-	TaskId_t	Tid;			// Task ID
-	TaskPrio_t	Priority;		// Task priority
-	Status_t	TaskStatus;		// Task's status
-	RunValue_t	Run;			// How many run
+	TaskId_t		Tid;			// Task ID
+	TaskPrio_t		Priority;		// Task priority
+	Status_t		TaskStatus;		// Task's status
+#if	uMT_USE_TASK_STATISTICS>=1
+	RunValue_t		Run;		// How many run
+#endif
 
-	StackSize_t	StackSize;		// Stack's size in bytes
-	StackSize_t	FreeStack;		// Free stack size in bytes
-	StackSize_t MaxUsedStack;	// Maximum used stack in bytes
+#if	uMT_USE_TASK_STATISTICS>=2
+	uMTextendedTime	usRunningTime;	// Elapsed time in RUNNING mode
+#endif
+
+	StackSize_t		StackSize;		// Stack's size in bytes
+	StackSize_t		FreeStack;		// Free stack size in bytes
+	StackSize_t		MaxUsedStack;	// Maximum used stack in bytes
 
 };
 

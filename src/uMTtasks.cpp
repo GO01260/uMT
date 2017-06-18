@@ -52,7 +52,12 @@ void	uTask::CleanUp()
 	EV_requested = uMT_NULL_EVENT;
 	EV_condition = uMT_NULL_OPT;
 #endif
-	
+
+#if	uMT_USE_TASK_STATISTICS>=2
+	usRunningTime.Clear();
+	usLastRun = 0;
+#endif
+
 }
 
 
@@ -62,7 +67,7 @@ void	uTask::CleanUp()
 //	uTask::Init()
 //
 ////////////////////////////////////////////////////////////////////////////////////
-void	uTask::Init(TaskId_t _myTid)
+void	uTask::Init(unsigned int myIndex)
 {
 #if uMT_SAFERUN==1
 	magic = uMT_TASK_MAGIC;			// To check consistency
@@ -71,11 +76,14 @@ void	uTask::Init(TaskId_t _myTid)
 	StackBaseAddr = (StackPtr_t)NULL;
 	TaskStatus = S_UNUSED;
 	StackSize = 0;
+
+#if	uMT_USE_TASK_STATISTICS>=1
 	Run = 0;
+#endif
 
 	Next = (uTask *)NULL;
 
-	myTid = _myTid;
+	myTid.Init(myIndex);
 
 	CleanUp();
 
@@ -85,7 +93,7 @@ void	uTask::Init(TaskId_t _myTid)
 
 
 #if	uMT_USE_TIMERS==1
-	TaskTimer.Init(myTid, uMT_TM_IAM_TASK, this);	// Pointer to this task
+	TaskTimer.Init(myTid.Index, uMT_TM_IAM_TASK, this);	// Pointer to this task
 #endif
 }
 
@@ -133,8 +141,9 @@ Errno_t	uMT::Tk_CreateTask(FuncAddress_t StartAddress, TaskId_t &Tid, FuncAddres
 	// Pickup the first one free...
 	uTask *pTask = UnusedQueue;
 
-	// Clean up task
+	// Clean up task and generate a new Timestamp
 	pTask->CleanUp();
+	pTask->myTid.NewTimestamp();
 
 #if uMT_ALLOCATION_TYPE==uMT_VARIABLE_DYNAMIC
 
@@ -211,15 +220,15 @@ Errno_t	uMT::Tk_DeleteTask(TaskId_t Tid)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
 
-	if (Tid == uMT_ARDUINO_TASK_NUM)		// Arduino loop() cannot be deleted....
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
 		return(E_INVALID_TASKID);
 
+	if (pTask->TaskStatus == S_UNUSED)				// Cannot delete an unused task...
+		return(E_INVALID_TASKID);
 
-	uTask *pTask = &TaskList[Tid];
-
-	if (pTask->TaskStatus == S_UNUSED)
+		if (Tid.Index == uMT_ARDUINO_TASK_NUM)		// Arduino loop() cannot be deleted....
 		return(E_INVALID_TASKID);
 
 	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
@@ -266,9 +275,10 @@ Errno_t	uMT::Tk_StartTask(TaskId_t Tid)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
 
-	uTask *pTask = &TaskList[Tid];
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
 
 	if (pTask->TaskStatus != S_CREATED)
 	{
@@ -410,13 +420,14 @@ Errno_t	uMT::Tk_ReStartTask(TaskId_t Tid)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
 
-	if (Tid == uMT_ARDUINO_TASK_NUM)		// Cannot restart Arduino, missing StartAddress...
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
+
+	if (Tid.Index == uMT_ARDUINO_TASK_NUM)		// Cannot restart Arduino, missing StartAddress...
 		return(E_NOT_ALLOWED);
 	
-	uTask *pTask = &TaskList[Tid];
-
 	if (pTask->TaskStatus == S_UNUSED)
 		return(E_TASK_NOT_STARTED);
 
@@ -439,11 +450,12 @@ Errno_t	uMT::Tk_SetParam(TaskId_t Tid, Param_t _parameter)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
+
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
 
 	CpuStatusReg_t CpuFlags = isr_Kn_IntLock();	/* Enter critical region */
-
-	uTask *pTask = &TaskList[Tid];
 
 	if (pTask->TaskStatus != S_CREATED)
 	{
@@ -507,9 +519,10 @@ Errno_t	uMT::Tk_SetPriority(TaskId_t Tid, TaskPrio_t npriority, TaskPrio_t &ppri
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
 
-	uTask *pTask = &TaskList[Tid];
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
 
 	ppriority = pTask->Priority;
 
@@ -572,9 +585,10 @@ Errno_t	uMT::Tk_GetPriority(TaskId_t Tid, TaskPrio_t &ppriority)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
 
-	uTask *pTask = &TaskList[Tid];
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
 
 	ppriority = pTask->Priority;
 
@@ -632,8 +646,14 @@ Errno_t	uMT::doGetTaskInfo(uTask *pTask, uMTtaskInfo &Info)
 	Info.StackSize = pTask->StackSize;
 
 	Info.TaskStatus = pTask->TaskStatus;
+	
+#if	uMT_USE_TASK_STATISTICS>=1
 	Info.Run = pTask->Run;
+#endif
 
+#if	uMT_USE_TASK_STATISTICS>=2
+	Info.usRunningTime = pTask->usRunningTime;
+#endif
 
 	if (pTask == Running)
 	{
@@ -659,9 +679,12 @@ Errno_t	uMT::Tk_GetTaskInfo(TaskId_t Tid, uMTtaskInfo &Info)
 	if (Inited == FALSE)
 		return(E_NOT_INITED);
 
-	CHECK_VALID_TASK(Tid);
+	uTask *pTask;
 
-	return(doGetTaskInfo(&TaskList[Tid], Info));
+	if ((pTask = GetTaskPointer(Tid)) == NULL)
+		return(E_INVALID_TASKID);
+
+	return(doGetTaskInfo(pTask, Info));
 }
 
 ///////////////////// EOF

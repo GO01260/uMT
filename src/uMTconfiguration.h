@@ -35,6 +35,7 @@
 #define uMT_USE_RESTARTTASK			1			// Use tk_Restart()
 #define uMT_USE_PRINT_INTERNALS		1			// Setting to 0 can save 26 bytes...
 #define uMT_USE_MALLOC_REENTRANT	1			// malloc() and free() re-entrant using lock/unlock
+#define uMT_USE_TASK_STATISTICS		2			// 1=count the number of times a task has become S_RUNNING, 2=1+measure execution time 
 
 
 ////////////////////////////////////////////////////////////////////////////////////
@@ -108,8 +109,9 @@
 
 #define malloc(x)			x
 #define free(x)				
+#define micros()	0
 
-#elif defined(ARDUINO_ARCH_SAM) // ARDUINO DUE //////////////////////////////////////////////////////////////////////////
+#elif defined(ARDUINO_ARCH_SAM) // ARDUINO DUE  //////////////////////////////////////////////////////////////////////////
 
 #define uMT_ALLOCATION_TYPE	uMT_VARIABLE_DYNAMIC
 
@@ -122,7 +124,28 @@
 #define uMT_DEFAULT_STACK_SIZE		1024	// DEFAULT new application STACK size
 
 #define uMT_MIN_IDLE_STACK_SIZE		256		// MIN STACK size
-#define uMT_MAX_IDLE_STACK_SIZE		512		// MAX IDLE task STACK size
+#define uMT_MAX_IDLE_STACK_SIZE		1024	// MAX IDLE task STACK size
+#define uMT_DEFAULT_IDLE_STACK_SIZE	512		// DEFAULT IDLE task STACK size
+
+#define uMT_MIN_TID1_STACK_SIZE		uMT_MIN_STACK_SIZE	// MIN STACK size for Arduino loop() task
+#define uMT_MAX_TID1_STACK_SIZE		uMT_MAX_STACK_SIZE	// MAX STACK size for Arduino loop() task
+#define uMT_DEFAULT_TID1_STACK_SIZE	uMT_DEFAULT_STACK_SIZE	// DEFAULT STACK size for Arduino loop() task
+#define uMT_KERNEL_STACK_SIZE		256		// uMT Kernel STACK size
+
+#elif defined(ARDUINO_ARCH_SAMD) // ARDUINO ZERO //////////////////////////////////////////////////////////////////////////
+
+#define uMT_ALLOCATION_TYPE	uMT_VARIABLE_DYNAMIC
+
+#define uMT_DEFAULT_TASK_NUM		15		// Max task number (cannot be less than 4!!!)
+#define uMT_DEFAULT_SEM_NUM			32		// Max number of Semaphores
+#define uMT_DEFAULT_EVENTS_NUM		32		// How many Events per task
+
+#define uMT_MIN_STACK_SIZE			256		// MIN new application STACK size
+#define uMT_MAX_STACK_SIZE			4096	// MAX new application STACK size
+#define uMT_DEFAULT_STACK_SIZE		1024	// DEFAULT new application STACK size
+
+#define uMT_MIN_IDLE_STACK_SIZE		256		// MIN STACK size
+#define uMT_MAX_IDLE_STACK_SIZE		1024	// MAX IDLE task STACK size
 #define uMT_DEFAULT_IDLE_STACK_SIZE	512		// DEFAULT IDLE task STACK size
 
 #define uMT_MIN_TID1_STACK_SIZE		uMT_MIN_STACK_SIZE	// MIN STACK size for Arduino loop() task
@@ -142,9 +165,9 @@
 #define uMT_MAX_STACK_SIZE			292		// MAX new application STACK size
 #define uMT_DEFAULT_STACK_SIZE		256		// DEFAULT new application STACK size
 
-#define uMT_MIN_IDLE_STACK_SIZE		64		// MIN STACK size
-#define uMT_MAX_IDLE_STACK_SIZE		128		// MAX IDLE task STACK size
-#define uMT_DEFAULT_IDLE_STACK_SIZE	96		// DEFAULT IDLE task STACK size
+#define uMT_MIN_IDLE_STACK_SIZE		96		// MIN STACK size
+#define uMT_MAX_IDLE_STACK_SIZE		256		// MAX IDLE task STACK size
+#define uMT_DEFAULT_IDLE_STACK_SIZE	128		// DEFAULT IDLE task STACK size
 
 #define uMT_MIN_TID1_STACK_SIZE		uMT_MIN_STACK_SIZE	// MIN STACK size for Arduino loop() task
 #define uMT_MAX_TID1_STACK_SIZE		uMT_MAX_STACK_SIZE	// MAX STACK size for Arduino loop() task
@@ -154,7 +177,7 @@
 
 #else		// ARDUINO UNO //////////////////////////////////////////////////////////////////////////
 
-// The following cannot be reconfigured "xxx.INO"...
+// The following cannot be reconfigured from "xxx.INO"...
 #define uMT_ALLOCATION_TYPE	uMT_FIXED_STATIC
 
 #define uMT_DEFAULT_TASK_NUM		5		// Max task number (cannot be less than 4!!!)
@@ -165,9 +188,9 @@
 #define uMT_MAX_STACK_SIZE			256		// MAX new application STACK size
 #define uMT_DEFAULT_STACK_SIZE		200		// DEFAULT new application STACK size
 
-#define uMT_MIN_IDLE_STACK_SIZE		64		// MIN STACK size
+#define uMT_MIN_IDLE_STACK_SIZE		96		// MIN STACK size
 #define uMT_MAX_IDLE_STACK_SIZE		128		// MAX IDLE task STACK size
-#define uMT_DEFAULT_IDLE_STACK_SIZE	96		// DEFAULT IDLE task STACK size
+#define uMT_DEFAULT_IDLE_STACK_SIZE	128		// DEFAULT IDLE task STACK size
 
 #define uMT_MIN_TID1_STACK_SIZE		uMT_MIN_STACK_SIZE	// MIN STACK size for Arduino loop() task
 #define uMT_MAX_TID1_STACK_SIZE		uMT_MAX_STACK_SIZE	// MAX STACK size for Arduino loop() task
@@ -177,11 +200,14 @@
 #undef uMT_USE_RESTARTTASK
 #define uMT_USE_RESTARTTASK		0		// tk_Restart() not enabled for ARDUINO UNO
 
+#undef uMT_USE_TASK_STATISTICS
+#define uMT_USE_TASK_STATISTICS	0		// Save memory...
+
 #endif	
 
 #ifndef uMT_DEFAULT_TIMER_AGENT_NUM
-#define uMT_MIN_TIMER_AGENT_NUM		(uMT_DEFAULT_TASK_NUM / 2)	// MIN number of AGENT Timers (one for each Task)
-#define uMT_MAX_TIMER_AGENT_NUM		(uMT_DEFAULT_TASK_NUM * 2)	// MAX number of AGENT Timers (one for each Task)
+#define uMT_MIN_TIMER_AGENT_NUM		(uMT_DEFAULT_TASK_NUM / 2)	// MIN number of AGENT Timers
+#define uMT_MAX_TIMER_AGENT_NUM		(uMT_DEFAULT_TASK_NUM * 2)	// MAX number of AGENT Timers
 #define uMT_DEFAULT_TIMER_AGENT_NUM	uMT_DEFAULT_TASK_NUM		// DEFAULT number of AGENT Timers (one for each Task)
 #endif
 
@@ -214,7 +240,7 @@
 //	KERNEL Version
 //
 ////////////////////////////////////////////////////////////////////////////////////
-#define uMT_VERSION_NUMBER		0x0200	// Version 2.0.0 (version x.y.z: X = 8 bits, Y and Z = 4 bits)
+#define uMT_VERSION_NUMBER		0x0260	// Version 2.6.0 (version x.y.z: X = 8 bits, Y and Z = 4 bits)
 
 
 

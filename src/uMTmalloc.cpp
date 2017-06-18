@@ -43,7 +43,7 @@
 #undef uMT_USE_MALLOC_REENTRANT
 #define uMT_USE_MALLOC_REENTRANT 1
 
-#if defined(ARDUINO_ARCH_SAM)
+#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD) 
 
 /*
  * Exported interface:
@@ -68,8 +68,15 @@ char *__malloc_heap_start = (char *)&__heap_start;
 //char *__malloc_heap_end = &__heap_end;
 char *__malloc_heap_end = (char *)(RAMEND - 128);
 
-#elif defined(ARDUINO_ARCH_SAM)  // SAM-specific code
+#elif defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD)   // SAM-specific code
+
+#if defined(ARDUINO_ARCH_SAMD)
+extern int  __end__ ;
+#define _end	__end__
+#else
 extern int  _end ;
+#endif
+
 char *__malloc_heap_start = (char *)&_end ;
 
 // Note that __malloc_heap_end is overridden by Kn_start()
@@ -188,7 +195,7 @@ _malloc(size_t len) {
 
 	// Note that __malloc_heap_end is overridden by Kn_start()
 
-#elif defined(ARDUINO_ARCH_SAM)  // SAM-specific code
+#elif defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD)  // SAM-specific code
 
 	if (__malloc_heap_start == 0) // Set LOWMARK point ( bottom & top of HEAP) 
 		__malloc_heap_start = (char *)&_end ;

@@ -33,7 +33,7 @@
 #include "uMTdebug.h"
 
 
-#if defined(ARDUINO_ARCH_SAM)
+#if defined(ARDUINO_ARCH_SAM) || defined(ARDUINO_ARCH_SAMD)
 
 
 extern void uMT_SystemTicks();
@@ -94,23 +94,41 @@ void __attribute__ ((naked)) __attribute__((noinline)) pendSVHook(void)
 {
 	//  On entry, HW_EXCP is already saved 
 
+#if defined(ARDUINO_ARCH_SAMD)
+	/* for cortex m0, ldm and stm are restricted to low registers */
+	asm volatile (
+		"mov   r3, lr;"
+		"mov   r2, r11;"
+		"mov   r1, r10;"
+		"mov   r0, r9;"
+		"push   {r0-r3};"
+
+		"mov   r3, r8;"
+		"mov   r2, r7;"
+		"push   {r2-r6};" 
+		);
+
+	uint32_t CurrentTick = millis();
+
+#else
 	// Save the remaining registers
 	asm volatile ("push {r4-r11,lr}");
 
-
 	uint32_t CurrentTick = GetTickCount();
 
+#endif
+	
 
-	if (CurrentTick < Kernel.TickCounter.Low) // RollOver..
-				Kernel.TickCounter.High++;
+	if (CurrentTick < Kernel.msTickCounter.Low) // RollOver..
+				Kernel.msTickCounter.High++;
 
 
-	Kernel.TickCounter.Low = CurrentTick;		// Simply copy ticks counter...
+	Kernel.msTickCounter.Low = CurrentTick;		// Simply copy ticks counter...
 
 
 	if (Kernel.kernelCfg.BlinkingLED)
 	{
-		if ((Kernel.TickCounter % uMT_TICKS_SECONDS) == 0)
+		if ((Kernel.msTickCounter % uMT_TICKS_SECONDS) == 0)
 		{
 			volatile static Bool_t f_led = TRUE;
 
@@ -150,11 +168,27 @@ void __attribute__ ((naked)) __attribute__((noinline)) pendSVHook(void)
 	}
 	else
 	{
+
+#if defined(ARDUINO_ARCH_SAMD)
+
+		/* for cortex m0, ldm and stm are restricted to low registers */
+		asm volatile (
+		"pop   {r2-r6};"
+		"mov   r8, r3;"
+		"mov   r7, r2;"
+		"pop   {r0-r3};"
+		"mov   r9, r0;"
+		"mov   r10, r1;"
+		"mov   r11, r2;"
+		"mov   lr, r3;"
+		"bx    lr;");
+#else
 		// Restore registers
 		asm volatile ("pop {r4-r11,lr}");
 
 		// Return from EXCEPTION
 		asm volatile ("bx lr");
+#endif
 	}
 }
 
@@ -173,15 +207,24 @@ void uMT::SetupSysTicks()
 	pinMode(LED_BUILTIN, OUTPUT);
 	digitalWrite(LED_BUILTIN, LOW);
 
+#if defined(ARDUINO_ARCH_SAMD)
 	// Align SystemTick
-	Kernel.TickCounter.Low = GetTickCount();		// Simply copy ticks counter...
+	Kernel.msTickCounter.Low = millis();
+
+#else
+	// Align SystemTick
+	Kernel.msTickCounter.Low = GetTickCount();		// Simply copy ticks counter...
+
+#endif
 
 	// Force the loading of the sysTickHook() routine to overwrite Arduino "weak" version
-	if (Kernel.TickCounter.Low == 0xFFFFFFFF)
+	if (Kernel.msTickCounter.Low == 0xFFFFFFFF)
 	{
 		sysTickHook();
 		pendSVHook();
 	}
+
+#if defined(ARDUINO_ARCH_SAM)
 
 
 	// Set interrupts to be preemptive. Change the grouping to set no sub-priority.
@@ -199,6 +242,12 @@ void uMT::SetupSysTicks()
 	// Force the PendSV exception to have the lowest priority to avoid killing other interrupts.
 	// See SAM3x8E datasheet 12.20.10.1 page 168. */
 	NVIC_SetPriority (PendSV_IRQn, 0xFF) ;
+#else
+
+	NVIC_SetPriority (PendSV_IRQn, 0xFF) ;
+
+#endif
+
 
 	// Enable SVCall_IRQn
 	// NVIC_EnableIRQ (SVCall_IRQn) ;	// It seems useless

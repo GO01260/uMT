@@ -13,7 +13,7 @@ The current version runs, full functionalities, on the Arduino Uno, Mega2560 and
 
 Please note that this an EDUCATIONAL tool, not designed for industrial or state-of-the-art application (nor life or mission critical application!!!) and not fully optimized.
 
-Bugs, questions and suggestions can be sent to the author at "go01260@alice.it"
+Bugs, questions and suggestions can be sent to the author at "go01260ap@gmail.com"
 
 Enjoy!!!
 
